@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import path from 'path'
+import { NextResponse } from 'next/server'
 
 // Prevent Vercel/Next from killing the process (works best locally)
 export const dynamic = 'force-dynamic'

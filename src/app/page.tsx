@@ -4,6 +4,7 @@ import NewsFeed from '../components/NewsFeed'
 import ThreatFilter from '../components/ThreatFilter'
 import { RightSidebar } from '../components/RightSidebar'
 import SurveillanceMap from '../components/SurveillanceMap'
+import { DashboardRefreshButton } from '../components/ui/DashboardRefreshButton'
 import { subHours, subDays } from 'date-fns'
 
 export default async function Home({
@@ -88,9 +89,9 @@ export default async function Home({
             {/* Map Section */}
             <SurveillanceMap news={news} />
 
-            <div className="flex justify-between items-end mb-8 bg-slate-950/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm shadow-sm relative overflow-hidden group">
+            <div className="flex justify-between items-start gap-6 mb-8 bg-slate-950/50 p-6 rounded-2xl border border-slate-800 backdrop-blur-sm shadow-sm relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-950/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-              <div className="relative z-10">
+              <div className="relative z-10 flex-1">
                 <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                   Market Intelligence
                 </h1>
@@ -99,9 +100,10 @@ export default async function Home({
                 </p>
               </div>
 
-              {/* <div className="relative z-10">
-                <ThreatFilter currentLevel={minThreat} />
-              </div> */}
+              {/* Refresh Button */}
+              <div className="relative z-10 w-64">
+                <DashboardRefreshButton />
+              </div>
             </div>
 
             {/* ✅ Passing the server-fetched news to the component */}

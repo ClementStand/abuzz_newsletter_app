@@ -3,7 +3,8 @@ News Fetcher for Abuzz Competitor Intelligence
 Uses Serper.dev (Google Search API) + Claude AI (Anthropic) for analysis
 """
 
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import datetime
 import json
 import os
@@ -19,7 +20,7 @@ load_dotenv()
 # Configure APIs
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-DB_PATH = "prisma/dev.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Initialize Anthropic client
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -117,18 +118,21 @@ def generate_cuid():
     return 'c' + uuid.uuid4().hex[:24]
 
 
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+
 def get_competitors():
     """Fetch competitors from database"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
         SELECT id, name, website, industry, region 
-        FROM Competitor 
+        FROM "Competitor" 
         WHERE status = 'active' OR status IS NULL
     """)
-    all_competitors = [dict(row) for row in cursor.fetchall()]
+    all_competitors = cursor.fetchall()  # Already dicts thanks to RealDictCursor
     conn.close()
     
     def sort_key(c):
@@ -143,19 +147,15 @@ def get_competitors():
     return sorted(all_competitors, key=sort_key)
 
 
-def check_existing_url(url):
-    """Check if URL already exists in database"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM CompetitorNews WHERE sourceUrl = ?", (url,))
-    exists = cursor.fetchone() is not None
-    conn.close()
-    return exists
+def check_existing_url(cursor, url):
+    """Check if URL already exists in database (pass cursor to reuse connection)"""
+    cursor.execute('SELECT id FROM "CompetitorNews" WHERE "sourceUrl" = %s', (url,))
+    return cursor.fetchone() is not None
 
 
 def save_news_item(competitor_id, news_item):
     """Save news item to database"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     source_url = sanitize_text(news_item.get('source_url', ''))
@@ -164,7 +164,7 @@ def save_news_item(competitor_id, news_item):
         conn.close()
         return False, "invalid_url"
     
-    if check_existing_url(source_url):
+    if check_existing_url(cursor, source_url):
         conn.close()
         return False, "duplicate"
     
@@ -210,10 +210,10 @@ def save_news_item(competitor_id, news_item):
         details_json = json.dumps(clean_details)
         
         cursor.execute("""
-            INSERT INTO CompetitorNews (
-                id, competitorId, eventType, date, title, summary,
-                threatLevel, details, sourceUrl, isRead, isStarred, extractedAt, region
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO "CompetitorNews" (
+                id, "competitorId", "eventType", date, title, summary,
+                "threatLevel", details, "sourceUrl", "isRead", "isStarred", "extractedAt", region
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             news_id,
             competitor_id,
@@ -224,8 +224,8 @@ def save_news_item(competitor_id, news_item):
             threat_level,
             details_json,
             source_url,
-            0, # Integer 0 for False
-            0, # Integer 0 for False
+            False,
+            False,
             iso_now_str,
             region
         ))
@@ -428,11 +428,47 @@ def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe']):
     return saved
 
 
+def write_status(status, current_competitor=None, processed=0, total=0, error=None):
+    """Write progress status to JSON file for Next.js API to read"""
+    import time
+    from datetime import datetime
+
+    # Calculate progress
+    percent_complete = 0
+    if total > 0:
+        percent_complete = int((processed / total) * 100)
+
+    # Estimate remaining time (assuming ~15 seconds per competitor)
+    estimated_seconds_remaining = (total - processed) * 15
+
+    status_data = {
+        'status': status,
+        'current_competitor': current_competitor,
+        'processed': processed,
+        'total': total,
+        'percent_complete': percent_complete,
+        'estimated_seconds_remaining': estimated_seconds_remaining,
+        'started_at': datetime.utcnow().isoformat() + 'Z' if status == 'running' and processed == 0 else None,
+        'completed_at': datetime.utcnow().isoformat() + 'Z' if status == 'completed' else None,
+        'error': error
+    }
+
+    # Write to public directory
+    status_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'public', 'refresh_status.json')
+    os.makedirs(os.path.dirname(status_path), exist_ok=True)
+
+    with open(status_path, 'w') as f:
+        json.dump(status_data, f, indent=2)
+        f.flush()  # Ensure immediate write
+
+    return status_data
+
+
 def clear_all_news():
     """Clear all news"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM CompetitorNews")
+    cursor.execute('DELETE FROM "CompetitorNews"')
     deleted = cursor.rowcount
     conn.commit()
     conn.close()
@@ -445,40 +481,60 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
     print("🎯 ABUZZ COMPETITOR INTELLIGENCE FETCHER")
     print("   Powered by Serper.dev + Claude AI")
     print("=" * 60)
-    
+
     if not ANTHROPIC_API_KEY:
         print("\n❌ ERROR: ANTHROPIC_API_KEY not found in .env")
         print("   Get your API key at https://console.anthropic.com")
+        write_status('error', error='ANTHROPIC_API_KEY not found')
         return 0
-    
+
     if clean_start:
         deleted = clear_all_news()
         print(f"\n🧹 Cleared {deleted} news entries")
-    
+
     competitors = get_competitors()
     print(f"\n📋 Found {len(competitors)} competitors")
     print(f"🌍 Searching regions: {', '.join(regions)}")
-    
+
     if limit:
         competitors = competitors[:limit]
         print(f"🎯 Processing {limit} competitors")
-    
-    total = 0
-    
-    for i, comp in enumerate(competitors, 1):
-        print(f"\n[{i}/{len(competitors)}]", end="")
-        saved = fetch_news_for_competitor(comp, regions)
-        total += saved
-        
-        # Rate limiting - Serper is fast but let's be nice
-        if i < len(competitors):
-            time.sleep(2)
-    
-    print("\n\n" + "=" * 60)
-    print(f"✅ COMPLETE: Added {total} news items")
-    print("=" * 60)
-    
-    return total
+
+    total_competitors = len(competitors)
+    total_news = 0
+
+    # Write initial status
+    write_status('running', current_competitor=None, processed=0, total=total_competitors)
+
+    try:
+        for i, comp in enumerate(competitors, 1):
+            # Update status before processing each competitor
+            write_status('running', current_competitor=comp['name'], processed=i-1, total=total_competitors)
+
+            print(f"\n[{i}/{len(competitors)}]", end="")
+            saved = fetch_news_for_competitor(comp, regions)
+            total_news += saved
+
+            # Update status after processing
+            write_status('running', current_competitor=comp['name'], processed=i, total=total_competitors)
+
+            # Rate limiting - Serper is fast but let's be nice
+            if i < len(competitors):
+                time.sleep(2)
+
+        # Write completion status
+        write_status('completed', processed=total_competitors, total=total_competitors)
+
+        print("\n\n" + "=" * 60)
+        print(f"✅ COMPLETE: Added {total_news} news items")
+        print("=" * 60)
+
+        return total_news
+
+    except Exception as e:
+        print(f"\n\n❌ ERROR: {e}")
+        write_status('error', error=str(e), processed=i-1, total=total_competitors)
+        raise
 
 
 if __name__ == "__main__":

@@ -32,9 +32,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.env.local
+.env.production
 
 # vercel
 .vercel
+
+# database migration artifacts
+prisma/dev.db.backup
+backup.sql
+data-export.json
 
 # typescript
 *.tsbuildinfo

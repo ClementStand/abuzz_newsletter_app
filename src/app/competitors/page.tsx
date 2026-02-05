@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
+import Link from 'next/link'
 import { Sidebar } from '@/components/Sidebar'
 import { CompetitorLogo } from "@/components/ui/CompetitorLogo"
 import { Plus, Archive, RefreshCw, X } from 'lucide-react'
@@ -160,35 +161,53 @@ export default function CompetitorsPage() {
                             </h2>
                             <div className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-800">
                                 {activeCompetitors.map(comp => (
-                                    <div key={comp.id} className="p-4 flex items-center justify-between group hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <CompetitorLogo
-                                                name={comp.name}
-                                                website={comp.website}
-                                                className="w-10 h-10 rounded-lg"
-                                            />
-                                            <div>
-                                                <h3 className="font-medium text-white">{comp.name}</h3>
-                                                <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                    <span>{comp.region || 'Global'}</span>
-                                                    <span>•</span>
-                                                    <a href={comp.website} target="_blank" className="hover:text-cyan-400 transition-colors truncate max-w-[200px]">{comp.website}</a>
+                                    <div key={comp.id} className="relative">
+                                        <Link
+                                            href={`/competitor/${comp.id}`}
+                                            className="p-4 flex items-center justify-between group hover:bg-slate-800/50 transition-colors block"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <CompetitorLogo
+                                                    name={comp.name}
+                                                    website={comp.website}
+                                                    className="w-10 h-10 rounded-lg"
+                                                />
+                                                <div>
+                                                    <h3 className="font-medium text-white group-hover:text-cyan-400 transition-colors">{comp.name}</h3>
+                                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                                        <span>{comp.region || 'Global'}</span>
+                                                        <span>•</span>
+                                                        <a
+                                                            href={comp.website}
+                                                            target="_blank"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="hover:text-cyan-400 transition-colors truncate max-w-[200px]"
+                                                        >
+                                                            {comp.website}
+                                                        </a>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-center px-4">
-                                                <div className="text-lg font-bold text-slate-300">{comp.newsCount}</div>
-                                                <div className="text-[10px] text-slate-500 uppercase">Signals</div>
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-center px-4">
+                                                    <div className="text-lg font-bold text-slate-300">{comp.newsCount}</div>
+                                                    <div className="text-[10px] text-slate-500 uppercase">Signals</div>
+                                                </div>
                                             </div>
-                                            <button
-                                                onClick={() => handleStatusChange(comp.id, 'archived')}
-                                                className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors tooltip"
-                                                title="Archive Competitor"
-                                            >
-                                                <Archive className="w-5 h-5" />
-                                            </button>
-                                        </div>
+                                        </Link>
+
+                                        {/* Archive button - positioned absolutely to avoid click conflicts */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                handleStatusChange(comp.id, 'archived')
+                                            }}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors z-10"
+                                            title="Archive Competitor"
+                                        >
+                                            <Archive className="w-5 h-5" />
+                                        </button>
                                     </div>
                                 ))}
                                 {activeCompetitors.length === 0 && (

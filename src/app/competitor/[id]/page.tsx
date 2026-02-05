@@ -1,12 +1,10 @@
-import { PrismaClient } from '@prisma/client'
 import Link from 'next/link'
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Globe, Brain, UserCheck, Activity, Calendar } from "lucide-react"
 import { format } from 'date-fns'
 import NewsCard from "@/components/ui/NewsCard"
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
 
 async function getCompetitor(id: string) {
     return await prisma.competitor.findUnique({
