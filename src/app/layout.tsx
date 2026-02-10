@@ -6,8 +6,11 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CompetitorHQ",
+  title: "NavPro Intel",
   description: "Daily Competitor Intelligence",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({

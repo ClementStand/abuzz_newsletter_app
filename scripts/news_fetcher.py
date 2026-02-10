@@ -196,9 +196,11 @@ def save_news_item(competitor_id, news_item):
             news_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
         except:
             news_date = now
-            
-        # Ensure UTC time is used for consistency, though strptime is naive
-        # We manually format to ISO 8601 with Z suffix
+
+        # Cap future dates to today
+        if news_date > now:
+            news_date = now
+
         news_date_str = news_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
         
         details = news_item.get('details', {})

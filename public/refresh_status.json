@@ -1,11 +1,11 @@
 {
-  "status": "running",
-  "current_competitor": "PearlQuest",
-  "processed": 56,
+  "status": "completed",
+  "current_competitor": null,
+  "processed": 63,
   "total": 63,
-  "percent_complete": 88,
-  "estimated_seconds_remaining": 105,
+  "percent_complete": 100,
+  "estimated_seconds_remaining": 0,
   "started_at": null,
-  "completed_at": null,
+  "completed_at": "2026-02-10T13:09:51.683720Z",
   "error": null
 }
