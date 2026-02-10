@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/prisma'
 
+// Extend Vercel serverless timeout (default is 10s, this allows up to 60s)
+export const maxDuration = 60
+
 const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY!,
 })

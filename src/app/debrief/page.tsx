@@ -80,13 +80,20 @@ export default function WeeklyDebrief() {
                 body: JSON.stringify(payload)
             })
             const data = await res.json()
-            setDebrief(data.response || data.debrief)
+
+            if (!res.ok || data.error) {
+                setDebrief(`Error: ${data.details || data.error || 'Unknown error'}. Please try again.`)
+                return
+            }
+
+            const content = data.response || data.debrief
+            setDebrief(content)
 
             // Save to LocalStorage
             const now = new Date().toISOString()
             setLastGeneratedAt(now)
             localStorage.setItem('abuzz_weekly_debrief', JSON.stringify({
-                content: data.response || data.debrief,
+                content,
                 generatedAt: now
             }))
 
