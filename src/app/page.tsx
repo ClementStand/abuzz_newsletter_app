@@ -116,10 +116,7 @@ export default async function Home({
                 </p>
               </div>
 
-              {/* Refresh Button */}
-              <div className="relative z-10 w-64">
-                <DashboardRefreshButton />
-              </div>
+
             </div>
 
             {/* ✅ Passing the server-fetched news to the component */}

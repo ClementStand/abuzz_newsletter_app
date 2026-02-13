@@ -35,25 +35,30 @@ def get_db_connection():
 
 SYSTEM_PROMPT = """You are a strategic intelligence analyst for Abuzz, a 3D wayfinding and kiosk solutions company based in UAE/Australia.
 
-Generate a comprehensive weekly intelligence debrief based on competitor activities.
+Generate a comprehensive weekly intelligence debrief based on the provided competitor news items.
 
-Key Context:
-- Primary Markets: UAE, Saudi Arabia, Qatar (malls, airports, hospitals)
-- Main Competitors: Mappedin, 22Miles, Pointr, ViaDirect, MapsPeople
-- Threat Levels: 1 (routine) to 5 (major threat in MENA)
+**Key Context:**
+- **Your Role:** Provide actionable competitive intelligence, NOT to critique the data collection method.
+- **Primary Markets:** UAE, Saudi Arabia, Qatar (malls, airports, hospitals).
+- **Key Competitors:** Mappedin, 22Miles, Pointr, ViaDirect, MapsPeople.
 
-Structure your debrief with:
-1. **Executive Summary** (2-3 sentences on key trends)
-2. **High-Priority Threats** (threat level 4-5 items)
-3. **Regional Analysis** (MENA focus, then other regions)
-4. **Competitor Movements** (grouped by company)
-5. **Strategic Recommendations** (actionable insights)
+**Instructions:**
+1. **Focus on the Data:** Analyze ONLY the provided news items. Do not hallucinate missing info.
+2. **Handle Missing Key Players:** If Mappedin, 22Miles, or other key competitors have NO news items in the list, explicitly state: "No significant public activity detected for [Name] this period." Do NOT say "data collection failed" or "methodology needs recalibration".
+3. **Analyze What Exists:** If the only news is from secondary competitors (e.g. Joseph Group, Desert River), treat it as valid market intelligence. Analyze their moves (e.g. "Joseph Group is expanding into X") and explain why it matters to Abuzz (e.g. "potential partnership opportunity" or "indirect competition in signage").
+4. **Tone:** Professional, concise, forward-looking.
 
-Use clear markdown formatting with headers, bullet points, and emphasis.
-Be concise but actionable."""
+**Structure:**
+1. **Executive Summary** (2-3 sentences). **CRITICAL:** Summarize the actual events found in the news. specific details (e.g. "Joseph Group secured a major healthcare contract..."). Do NOT start with "Activity was low" or "No news from key players". Even if the news is from secondary players, summarize IT.
+2. **High-Priority Threats** (Review items with Threat Level 4-5).
+3. **Competitor Movements** (Group by company).
+4. **Market Trends & Insights** (Synthesize the available news into trends).
+5. **Strategic Recommendations** (Based on the ACTUAL news found).
+
+Use clear markdown formatting."""
 
 
-def fetch_recent_news(days=7):
+def fetch_recent_news(days=14):
     """Fetch news from the last N days"""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -136,27 +141,35 @@ def save_debrief(content, period_start, period_end, item_count):
     return debrief_id
 
 
-def main():
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Generate intelligence debrief')
+    parser.add_argument('--days', type=int, default=14, help='Number of days to look back (default: 14)')
+    args = parser.parse_args()
+    
+    # Pass args to main (refactor main to accept args or set global)
+    # Since main() is simple, I'll just modify it to use args.days
+    
     print("=" * 60)
     print("📊 WEEKLY INTELLIGENCE DEBRIEF GENERATOR")
     print("=" * 60)
 
     if not ANTHROPIC_API_KEY:
         print("\n❌ ERROR: ANTHROPIC_API_KEY not found")
-        return
+        exit(1)
 
     if not DATABASE_URL:
         print("\n❌ ERROR: DATABASE_URL not found")
-        return
+        exit(1)
 
     # Fetch news
-    print("\n📋 Fetching recent news...")
-    news, start, end = fetch_recent_news(days=7)
+    print(f"\n📋 Fetching recent news (last {args.days} days)...")
+    news, start, end = fetch_recent_news(days=args.days)
     print(f"   Found {len(news)} items from {start.strftime('%b %d')} to {end.strftime('%b %d, %Y')}")
 
     if len(news) == 0:
-        print("\n⚠️  No news found in the last 7 days. Nothing to generate.")
-        return
+        print("\n⚠️  No news found. Nothing to generate.")
+        exit(0)
 
     # Generate debrief
     print("\n🤖 Generating debrief with Claude...")
@@ -172,7 +185,3 @@ def main():
     print("✅ DEBRIEF GENERATED AND SAVED")
     print("   View at: localhost:3000/debrief or intel.navpro.io/debrief")
     print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()

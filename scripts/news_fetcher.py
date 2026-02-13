@@ -32,46 +32,82 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 # Priority competitors (most likely to have news)
 PRIORITY_COMPETITORS = [
     "Mappedin", "22Miles", "Pointr", "MapsPeople", "Broadsign",
-    "Stratacache", "Poppulo", "Korbyt", "IndoorAtlas", "Inpixon",
-    "Quuppa", "MazeMap", "Navori", "ViaDirect", "ZetaDisplay"
+    "Stratacache", "Poppulo", "Korbyt", "IndoorAtlas", "Inpixon"
 ]
 
-# Regional search configurations
+# Regional search configurations - MENA + Europe + Global focus
 REGIONS = {
     'global': {'gl': 'us', 'hl': 'en'},
-    'mena': {'gl': 'ae', 'hl': 'en'},  # UAE
-    'europe': {'gl': 'uk', 'hl': 'en'},  # UK as proxy for Europe
-    'apac': {'gl': 'au', 'hl': 'en'},  # Australia
+    'mena': {'gl': 'ae', 'hl': 'en'},     # UAE/MENA in English
+    'europe': {'gl': 'gb', 'hl': 'en'},   # Europe (via UK) in English
+    'ksa': {'gl': 'sa', 'hl': 'en'},      # Saudi Arabia
 }
 
-ANALYSIS_PROMPT = """You are a competitive intelligence analyst for Abuzz, a 3D wayfinding and kiosk solutions company.
+# URLs that indicate non-news content (product pages, sales, profiles)
+BLOCKED_URL_PATTERNS = [
+    'linkedin.com', 'crunchbase.com', 'facebook.com', 'instagram.com',
+    'youtube.com', 'twitter.com', 'x.com',
+    '/product', '/products', '/catalog', '/catalogo',
+    '/shop', '/store', '/loja', '/tienda',
+    '/contact', '/contato', '/about', '/sobre',
+    'mercadolivre', 'mercadolibre', 'amazon.com', 'alibaba.com',
+    'olx.com', 'ebay.com',
+    'glassdoor.com', 'indeed.com', 'ziprecruiter.com',
+    'wikipedia.org', 'dnb.com', 'zoominfo.com',
+    '/careers', '/vagas', '/empleo',
+]
 
-I found these news articles about {competitor_name}:
+
+def is_news_url(url):
+    """Filter out product pages, sales sites, social media, and company profiles"""
+    if not url:
+        return False
+    url_lower = url.lower()
+    for pattern in BLOCKED_URL_PATTERNS:
+        if pattern in url_lower:
+            return False
+    return True
+
+
+ANALYSIS_PROMPT = """You are a competitive intelligence analyst for Abuzz, a company specializing in wayfinding and directory solutions.
+
+I found these search results about {competitor_name}:
 
 {articles}
 
-Based on these articles, identify any news related to:
-- Wayfinding, indoor navigation, mapping
-- Digital signage, kiosks, displays
-- Retail technology, mall solutions
-- Airport, hospital, venue technology
-- Partnerships, funding, acquisitions
-- Product launches, expansions
+IMPORTANT: Analyze ALL articles. Always output your title and summary in ENGLISH.
 
-If there's genuinely no relevant news, respond with: {{"no_relevant_news": true}}
+Your job is to find REAL NEWS EVENTS only. Include:
+- New contracts, deals, project wins (especially malls, airports, hospitals)
+- Partnerships, acquisitions, mergers, joint ventures
+- Product launches (new kiosks, wayfinding software, mobile apps)
+- Trade show appearances with NEW products
+- Financial results, funding rounds, investment news
+- New office openings (especially in MENA/Europe)
+- Leadership changes
+
+STRICTLY EXCLUDE (these are NOT news):
+- Product catalog pages or sales listings
+- Generic company profile descriptions
+- Job postings
+- Social media posts without real news content
+- "About us" pages
+- Blog posts that are just general advice (content marketing)
+
+If NONE of the articles contain real news events, respond with: {{"no_relevant_news": true}}
 
 Otherwise, return JSON:
 
 {{
   "news_items": [
     {{
-      "event_type": "New Project/Installation" | "Investment/Funding Round" | "Award/Recognition" | "Product Launch" | "Partnership/Acquisition" | "Leadership Change" | "Market Expansion" | "Technical Innovation" | "Financial Performance",
-      "title": "Clear headline (max 100 chars)",
-      "summary": "2-3 sentence summary (max 500 chars)",
+      "event_type": "New Project" | "Investment" | "Product Launch" | "Partnership" | "Leadership Change" | "Market Expansion" | "Financial Performance" | "Other",
+      "title": "Clear headline in ENGLISH (max 100 chars)",
+      "summary": "2-3 sentence summary in ENGLISH (max 500 chars). Focus on the 'So What?' for a competitor analysis.",
       "threat_level": 1-5,
       "date": "YYYY-MM-DD",
       "source_url": "The actual URL from the article",
-      "region": "NORTH_AMERICA" | "EUROPE" | "MENA" | "APAC" | "GLOBAL",
+      "region": "MENA" | "EUROPE" | "NORTH_AMERICA" | "APAC" | "GLOBAL",
       "details": {{
         "location": "City, Country or null",
         "financial_value": "Amount or null",
@@ -84,20 +120,17 @@ Otherwise, return JSON:
 
 Threat Level Guide:
 - 1: Routine news, minimal impact
-- 2: Minor development, worth monitoring
+- 2: Minor development
 - 3: Moderate competitive move
-- 4: Significant threat to Abuzz
-- 5: Major threat (big contract in MENA/airports/malls, or game-changing development)
+- 4: Significant threat (e.g. major new mall project in UAE/Saudi)
+- 5: Major threat (direct competitor winning a key account or launching a clone product)
 
-CRITICAL: Assign higher threat levels (4-5) for news in MENA region (UAE, Saudi, Qatar) as these are our primary markets.
+CRITICAL: Assign higher threat levels (4-5) for news in MENA (UAE, Saudi Arabia, Qatar) as these are our primary markets.
 
 DATE EXTRACTION INSTRUCTIONS:
-- Use the EXACT "Published Date" provided in the article metadata.
-- Do NOT use today's date unless the article explicitly says "today".
-- If the date is "October 28, 2024", the output date must be "2024-10-28".
-- If no date is found, use the current date as fallback.
-
-Return ONLY valid JSON, no markdown formatting or explanation."""
+- Use the EXACT "Published Date" provided.
+- If no date is found, use the current date.
+- Return ONLY valid JSON."""
 
 
 def sanitize_text(text):
@@ -114,7 +147,10 @@ def sanitize_text(text):
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    text = text.encode('ascii', 'ignore').decode('ascii')
+    try:
+        text = text.encode('ascii', 'ignore').decode('ascii')
+    except:
+        pass
     return text.strip()
 
 
@@ -136,23 +172,21 @@ def get_competitors():
         FROM "Competitor" 
         WHERE status = 'active' OR status IS NULL
     """)
-    all_competitors = cursor.fetchall()  # Already dicts thanks to RealDictCursor
+    all_competitors = cursor.fetchall()
     conn.close()
     
     def sort_key(c):
         name = c['name']
         if name in PRIORITY_COMPETITORS:
             return (0, PRIORITY_COMPETITORS.index(name))
-        elif 'Direct' in (c.get('industry') or ''):
-            return (1, name)
         else:
-            return (2, name)
+            return (1, name)
     
     return sorted(all_competitors, key=sort_key)
 
 
 def check_existing_url(cursor, url):
-    """Check if URL already exists in database (pass cursor to reuse connection)"""
+    """Check if URL already exists in database"""
     cursor.execute('SELECT id FROM "CompetitorNews" WHERE "sourceUrl" = %s', (url,))
     return cursor.fetchone() is not None
 
@@ -176,7 +210,6 @@ def save_news_item(competitor_id, news_item):
         news_id = generate_cuid()
         now = datetime.datetime.now(datetime.timezone.utc)
         
-        # Prepare strictly formatted strings for SQLite/Prisma compatibility
         iso_now_str = now.strftime('%Y-%m-%dT%H:%M:%S.000Z')
 
         title = sanitize_text(news_item.get('title', 'Untitled'))[:200]
@@ -193,7 +226,8 @@ def save_news_item(competitor_id, news_item):
         
         date_str = news_item.get('date', now.strftime('%Y-%m-%d'))
         try:
-            news_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+            # Handle YYYY-MM-DD
+            news_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=datetime.timezone.utc)
         except:
             news_date = now
 
@@ -201,11 +235,11 @@ def save_news_item(competitor_id, news_item):
         if news_date > now:
             news_date = now
 
-        # Skip news before 2025
-        cutoff = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        # Skip news before 2024
+        cutoff = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
         if news_date < cutoff:
             conn.close()
-            return False, "pre_2025"
+            return False, "pre_2024"
 
         news_date_str = news_date.strftime('%Y-%m-%dT%H:%M:%S.000Z')
         
@@ -252,7 +286,7 @@ def save_news_item(competitor_id, news_item):
 
 
 def get_last_fetch_date():
-    """Get the date of the most recent news item in the DB to use as search start date"""
+    """Get the date of the most recent news item in the DB"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -267,7 +301,7 @@ def get_last_fetch_date():
 
 
 def get_all_existing_urls():
-    """Fetch all existing source URLs from DB for fast duplicate checking"""
+    """Fetch all existing source URLs from DB"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT "sourceUrl" FROM "CompetitorNews"')
@@ -277,11 +311,7 @@ def get_all_existing_urls():
 
 
 def search_serper(query, search_type='news', region='global', num_results=10, date_restrict=None):
-    """
-    Search using Serper.dev API
-    search_type: 'news' or 'search'
-    date_restrict: e.g. 'd3' for last 3 days, 'w1' for last week
-    """
+    """Search using Serper.dev API"""
     if not SERPER_API_KEY:
         print("      ERROR: SERPER_API_KEY not set in .env")
         return []
@@ -311,7 +341,6 @@ def search_serper(query, search_type='news', region='global', num_results=10, da
         response.raise_for_status()
         data = response.json()
         
-        # Extract results based on search type
         if search_type == 'news':
             return data.get('news', [])
         else:
@@ -323,47 +352,41 @@ def search_serper(query, search_type='news', region='global', num_results=10, da
 
 
 def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe'], date_restrict=None):
-    """
-    Search for news about a competitor across multiple regions
-    date_restrict: e.g. 'd3' for last 3 days, 'w1' for last week
-    """
+    """Search for news about a competitor across multiple regions"""
     all_results = []
     seen_urls = set()
+    filtered_count = 0
     
-    # Build search queries
     queries = [
-        f'"{competitor_name}" news',
-        f'{competitor_name} wayfinding OR signage OR kiosk OR navigation',
+        f'"{competitor_name}" contract OR deal OR partnership OR launch OR expansion',
+        f'"{competitor_name}" mall OR airport OR hospital',
+        f'"{competitor_name}" wayfinding OR "digital signage" OR kiosk',
     ]
     
     for region in regions_to_search:
         for query in queries:
-            results = search_serper(query, search_type='news', region=region, num_results=5, date_restrict=date_restrict)
+            results = search_serper(query, search_type='news', region=region, num_results=10, date_restrict=date_restrict)
             
             for r in results:
                 url = r.get('link', '')
                 if url and url not in seen_urls:
                     seen_urls.add(url)
-                    r['_search_region'] = region  # Track which region found this
-                    all_results.append(r)
+                    if is_news_url(url):
+                        r['_search_region'] = region
+                        all_results.append(r)
+                    else:
+                        filtered_count += 1
             
-            # Also try regular search for more coverage
-            results = search_serper(query, search_type='search', region=region, num_results=5, date_restrict=date_restrict)
-            
-            for r in results:
-                url = r.get('link', '')
-                if url and url not in seen_urls:
-                    seen_urls.add(url)
-                    r['_search_region'] = region
-                    all_results.append(r)
-            
-            if len(all_results) >= 15:
+            if len(all_results) >= 25:
                 break
         
-        if len(all_results) >= 15:
+        if len(all_results) >= 25:
             break
     
-    return all_results[:15]
+    if filtered_count > 0:
+        print(f" ({filtered_count} filtered)", end="")
+    
+    return all_results[:25]
 
 
 def analyze_with_claude(competitor_name, articles):
@@ -375,15 +398,26 @@ def analyze_with_claude(competitor_name, articles):
         print("      ERROR: ANTHROPIC_API_KEY not set in .env")
         return None
     
-    articles_text = ""
-    for i, article in enumerate(articles, 1):
-        title = sanitize_text(article.get('title', 'No title'))
-        snippet = sanitize_text(article.get('snippet', article.get('description', '')))
-        url = article.get('link', article.get('url', ''))
-        date = article.get('date', 'Unknown')
-        region = article.get('_search_region', 'global').upper()
+    BATCH_SIZE = 12
+    all_news_items = []
+    
+    for batch_start in range(0, len(articles), BATCH_SIZE):
+        batch = articles[batch_start:batch_start + BATCH_SIZE]
+        batch_num = (batch_start // BATCH_SIZE) + 1
+        total_batches = (len(articles) + BATCH_SIZE - 1) // BATCH_SIZE
         
-        articles_text += f"""
+        if total_batches > 1:
+            print(f"      [batch {batch_num}/{total_batches}]", end="")
+        
+        articles_text = ""
+        for i, article in enumerate(batch, 1):
+            title = sanitize_text(article.get('title', 'No title'))
+            snippet = sanitize_text(article.get('snippet', article.get('description', '')))
+            url = article.get('link', article.get('url', ''))
+            date = article.get('date', 'Unknown')
+            region = article.get('_search_region', 'global').upper()
+            
+            articles_text += f"""
 ---
 Article {i}:
 Title: {title}
@@ -393,41 +427,81 @@ Region Found: {region}
 Content: {snippet[:500]}
 ---
 """
-    
-    prompt = ANALYSIS_PROMPT.format(
-        competitor_name=competitor_name,
-        articles=articles_text
-    )
-    
-    try:
-        message = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=4000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+        
+        prompt = ANALYSIS_PROMPT.format(
+            competitor_name=competitor_name,
+            articles=articles_text
         )
         
-        response_text = message.content[0].text.strip()
+        # Retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                import httpx
+                http_client = httpx.Client(timeout=60.0)
+                retry_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http_client)
+
+                message = retry_client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=4000,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                
+                response_text = message.content[0].text.strip()
+                
+                if "```json" in response_text:
+                    response_text = response_text.split("```json")[1].split("```")[0]
+                elif "```" in response_text:
+                    response_text = response_text.split("```")[1].split("```")[0]
+                
+                response_text = response_text.strip()
+                
+                result = None
+                try:
+                    result = json.loads(response_text)
+                except json.JSONDecodeError:
+                    for fix in ['}]}', ']}', '}']:
+                        try:
+                            result = json.loads(response_text + fix)
+                            print(" (recovered)", end="")
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                
+                if result is None:
+                    print(f" JSON fail", end="")
+                    break # Break retry loop if JSON is bad
+                
+                if not result.get('no_relevant_news'):
+                    batch_items = result.get('news_items', [])
+                    all_news_items.extend(batch_items)
+                    if total_batches > 1:
+                        print(f" → {len(batch_items)} items")
+                else:
+                    if total_batches > 1:
+                        print(f" → 0 items")
+                
+                break # Success, break retry loop
+                
+            except (anthropic.APIError, httpx.TimeoutException, httpx.ReadTimeout, httpx.ConnectError) as e:
+                if attempt < max_retries - 1:
+                    print(f" (emit retry {attempt+1})", end="")
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    print(f" (API failed: {e})", end="")
+            except Exception as e:
+                print(f" (Err: {e})", end="")
+                break
         
-        # Clean JSON if wrapped in markdown
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0]
-        elif "```" in response_text:
-            response_text = response_text.split("```")[1].split("```")[0]
-        
-        result = json.loads(response_text.strip())
-        return result
-        
-    except json.JSONDecodeError as e:
-        print(f"      JSON error: {e}")
-        return None
-    except anthropic.APIError as e:
-        print(f"      Claude API error: {e}")
-        return None
-    except Exception as e:
-        print(f"      Error: {e}")
-        return None
+        if batch_start + BATCH_SIZE < len(articles):
+            time.sleep(0.5)
+    
+    if not all_news_items:
+        return {'no_relevant_news': True}
+    
+    return {'news_items': all_news_items}
 
 
 def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], existing_urls=None, date_restrict=None):
@@ -440,30 +514,29 @@ def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], 
     articles = search_news(name, regions, date_restrict=date_restrict)
     
     if not articles:
-        print(f" — no articles found")
+        print(f" — no articles")
         return 0
     
-    # Pre-filter: remove articles whose URLs are already in the DB
     if existing_urls:
         new_articles = [a for a in articles if a.get('link', '') not in existing_urls]
         skipped = len(articles) - len(new_articles)
         if skipped > 0:
-            print(f" — {len(articles)} found, {skipped} already known", end="")
+            print(f" — {len(articles)} found, {skipped} known", end="")
         if not new_articles:
-            print(f" — all duplicates, skipping Claude")
+            print(f" — all double, skip")
             return 0
         articles = new_articles
     
-    print(f" — analyzing {len(articles)} new articles...")
+    print(f" — {len(articles)} new...", end="")
     
     analysis = analyze_with_claude(name, articles)
     
     if not analysis:
-        print(f"      Analysis failed")
+        # print(f" (failed)")
         return 0
     
     if analysis.get('no_relevant_news'):
-        print(f"      No relevant news found")
+        # print(f" (none relevant)")
         return 0
     
     news_items = analysis.get('news_items', [])
@@ -473,26 +546,27 @@ def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], 
         success, status = save_news_item(comp_id, item)
         if success:
             saved += 1
-            region = item.get('region', 'GLOBAL')
-            print(f"      ✅ [{region}] {item.get('title', '')[:50]}...")
-        elif status == "duplicate":
-            print(f"      ⏭️  Duplicate: {item.get('title', '')[:40]}...")
+        else:
+            print(f" [Skip: {status}]", end="")
     
+    if saved > 0:
+        print(f" ✅ Saved {saved}", end="")
+    else:
+        print(f" (0 saved)", end="")
+        
     return saved
 
 
 def write_status(status, current_competitor=None, processed=0, total=0, error=None):
-    """Write progress status to JSON file for Next.js API to read"""
+    """Write progress status to JSON file"""
     import time
     from datetime import datetime
 
-    # Calculate progress
     percent_complete = 0
     if total > 0:
         percent_complete = int((processed / total) * 100)
 
-    # Estimate remaining time (assuming ~15 seconds per competitor)
-    estimated_seconds_remaining = (total - processed) * 15
+    estimated_seconds_remaining = (total - processed) * 20
 
     status_data = {
         'status': status,
@@ -506,19 +580,19 @@ def write_status(status, current_competitor=None, processed=0, total=0, error=No
         'error': error
     }
 
-    # Write to public directory
     status_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'public', 'refresh_status.json')
-    os.makedirs(os.path.dirname(status_path), exist_ok=True)
-
-    with open(status_path, 'w') as f:
-        json.dump(status_data, f, indent=2)
-        f.flush()  # Ensure immediate write
+    try:
+        os.makedirs(os.path.dirname(status_path), exist_ok=True)
+        with open(status_path, 'w') as f:
+            json.dump(status_data, f, indent=2)
+            f.flush()
+    except:
+        pass
 
     return status_data
 
 
 def clear_all_news():
-    """Clear all news"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('DELETE FROM "CompetitorNews"')
@@ -529,83 +603,70 @@ def clear_all_news():
 
 
 def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'europe'], days=None):
-    """Main function
-    days: Only search for articles from the last N days. If None, auto-detects from last fetch.
-    """
+    """Main function"""
     print("=" * 60)
-    print("🎯 ABUZZ COMPETITOR INTELLIGENCE FETCHER")
-    print("   Powered by Serper.dev + Claude AI")
+    print("🎯 ABUZZ INTELLIGENCE FETCHER (v2.0)")
     print("=" * 60)
 
     if not ANTHROPIC_API_KEY:
-        print("\n❌ ERROR: ANTHROPIC_API_KEY not found in .env")
-        print("   Get your API key at https://console.anthropic.com")
+        print("\n❌ ERROR: ANTHROPIC_API_KEY not found")
         write_status('error', error='ANTHROPIC_API_KEY not found')
         return 0
 
     if clean_start:
         deleted = clear_all_news()
-        print(f"\n🧹 Cleared {deleted} news entries")
+        print(f"\n🧹 Cleared {deleted} entries")
 
-    # Determine date restriction for Serper searches
     date_restrict = None
     if days:
         date_restrict = f"d{days}"
-        print(f"\n📅 Searching last {days} day(s) only")
+        print(f"\n📅 Last {days} days")
     elif not clean_start:
-        # Auto-detect: calculate days since last fetch
         last_fetch = get_last_fetch_date()
         if last_fetch:
             if isinstance(last_fetch, str):
                 last_fetch = datetime.datetime.fromisoformat(last_fetch.replace('Z', '+00:00'))
             days_since = (datetime.datetime.now(datetime.timezone.utc) - last_fetch).days
-            search_days = max(days_since + 1, 1)  # At least 1 day, +1 for overlap
-            search_days = min(search_days, 14)  # Cap at 2 weeks
+            search_days = max(days_since + 1, 1)
+            search_days = min(search_days, 14)
             date_restrict = f"d{search_days}"
-            print(f"\n📅 Last fetch: {last_fetch.strftime('%b %d, %Y')} — searching last {search_days} day(s)")
+            print(f"\n📅 Auto-range: last {search_days} days")
         else:
-            print(f"\n📅 First run — searching all available articles")
+            print(f"\n📅 Full history")
 
-    # Pre-load all existing URLs for fast duplicate checking
-    print("📦 Loading existing URLs from database...")
+    print("📦 Loading URLs...")
     existing_urls = get_all_existing_urls()
-    print(f"   {len(existing_urls)} existing articles in DB")
+    print(f"   {len(existing_urls)} known URLs")
 
     competitors = get_competitors()
-    print(f"📋 Found {len(competitors)} competitors")
-    print(f"🌍 Searching regions: {', '.join(regions)}")
+    print(f"📋 {len(competitors)} competitors")
 
     if limit:
         competitors = competitors[:limit]
-        print(f"🎯 Processing {limit} competitors")
+        print(f"🎯 Limiting to {limit}")
 
     total_competitors = len(competitors)
     total_news = 0
 
-    # Write initial status
     write_status('running', current_competitor=None, processed=0, total=total_competitors)
 
     try:
         for i, comp in enumerate(competitors, 1):
-            # Update status before processing each competitor
             write_status('running', current_competitor=comp['name'], processed=i-1, total=total_competitors)
 
             print(f"[{i}/{len(competitors)}]", end="")
             saved = fetch_news_for_competitor(comp, regions, existing_urls=existing_urls, date_restrict=date_restrict)
             total_news += saved
 
-            # Update status after processing
             write_status('running', current_competitor=comp['name'], processed=i, total=total_competitors)
 
-            # Rate limiting - Serper is fast but let's be nice
             if i < len(competitors):
                 time.sleep(1)
 
-        # Write completion status
         write_status('completed', processed=total_competitors, total=total_competitors)
 
         print("\n" + "=" * 60)
-        print(f"✅ COMPLETE: Added {total_news} news items")
+        print(f"✅ COMPLETE: {total_news} items added")
         print("=" * 60)
 
         return total_news
@@ -618,17 +679,16 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Fetch competitor news using Serper.dev')
-    parser.add_argument('--limit', type=int, help='Limit number of competitors')
-    parser.add_argument('--skip', type=int, default=0, help='Skip first N competitors')
-    parser.add_argument('--test', action='store_true', help='Test with 5 competitors')
-    parser.add_argument('--clean', action='store_true', help='Clear all news first')
-    parser.add_argument('--region', type=str, help='Specific region: global, mena, europe, apac')
-    parser.add_argument('--mena', action='store_true', help='Focus on MENA region')
-    parser.add_argument('--days', type=int, help='Only search last N days (e.g. --days 3)')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--limit', type=int)
+    parser.add_argument('--skip', type=int, default=0)
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--clean', action='store_true')
+    parser.add_argument('--region', type=str)
+    parser.add_argument('--mena', action='store_true')
+    parser.add_argument('--days', type=int)
     args = parser.parse_args()
     
-    # Determine regions to search
     regions = ['global', 'mena', 'europe']
     if args.region:
         regions = [args.region]
@@ -636,7 +696,7 @@ if __name__ == "__main__":
         regions = ['mena', 'global']
     
     if args.test:
-        fetch_all_news(limit=5, clean_start=True, regions=regions, days=args.days)
+        fetch_all_news(limit=3, clean_start=True, regions=regions, days=args.days)
     elif args.limit:
         fetch_all_news(limit=args.limit, clean_start=args.clean, regions=regions, days=args.days)
     else:

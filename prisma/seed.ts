@@ -36,6 +36,7 @@ async function main() {
 
     for (const r of rawRecords) {
         const name = r.Company?.trim()
+        const region = (r['Key Markets'] || '') + (r['HQ Location'] || '')
 
         // Skip invalid rows
         if (!name) continue
@@ -43,7 +44,19 @@ async function main() {
         // Skip Abuzz (our company)
         if (name.toLowerCase().includes('abuzz')) continue
 
-        competitors.push(r)
+        // Filter: Keep only PRIORITY or MENA competitors
+        const PRIORITY = [
+            "Mappedin", "22Miles", "Pointr", "MapsPeople", "Broadsign",
+            "Stratacache", "Poppulo", "Korbyt", "IndoorAtlas", "Inpixon",
+            "Quuppa", "MazeMap", "Navori", "ViaDirect", "ZetaDisplay"
+        ]
+
+        const isPriority = PRIORITY.some(p => name.includes(p))
+        const isMena = region.includes('MENA') || region.includes('UAE') || region.includes('Saudi') || region.includes('Dubai')
+
+        if (isPriority || isMena) {
+            competitors.push(r)
+        }
     }
 
     console.log(`🏢 Loading ${competitors.length} competitors...`)
