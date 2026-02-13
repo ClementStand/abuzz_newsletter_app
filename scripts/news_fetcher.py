@@ -351,7 +351,7 @@ def search_serper(query, search_type='news', region='global', num_results=10, da
         return []
 
 
-def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe'], date_restrict=None):
+def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe', 'australia'], date_restrict=None):
     """Search for news about a competitor across multiple regions"""
     all_results = []
     seen_urls = set()
@@ -359,8 +359,9 @@ def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe'],
     
     queries = [
         f'"{competitor_name}" contract OR deal OR partnership OR launch OR expansion',
-        f'"{competitor_name}" mall OR airport OR hospital',
+        f'"{competitor_name}" mall OR airport OR hospital OR university',
         f'"{competitor_name}" wayfinding OR "digital signage" OR kiosk',
+        f'"{competitor_name}" "virtual assistant" OR "directory" OR screens',
     ]
     
     for region in regions_to_search:
