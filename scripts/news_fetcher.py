@@ -75,6 +75,10 @@ I found these search results about {competitor_name}:
 
 {articles}
 
+CONTEXT:
+Today is {today_date}.
+{date_instruction}
+
 IMPORTANT: Analyze ALL articles. Always output your title and summary in ENGLISH.
 
 Your job is to find REAL NEWS EVENTS only. Include:
@@ -93,6 +97,7 @@ STRICTLY EXCLUDE (these are NOT news):
 - Social media posts without real news content
 - "About us" pages
 - Blog posts that are just general advice (content marketing)
+- News about a PERSON named "{competitor_name}" (e.g. "Joseph was hospitalized") unless they are the CEO/Founder of the company. Ensure it is about the COMPANY.
 
 If NONE of the articles contain real news events, respond with: {{"no_relevant_news": true}}
 
@@ -310,7 +315,7 @@ def get_all_existing_urls():
     return urls
 
 
-def search_serper(query, search_type='news', region='global', num_results=10, date_restrict=None):
+def search_serper(query, search_type='news', region='global', num_results=10, date_restrict=None, tbs_val=None):
     """Search using Serper.dev API"""
     if not SERPER_API_KEY:
         print("      ERROR: SERPER_API_KEY not set in .env")
@@ -328,7 +333,9 @@ def search_serper(query, search_type='news', region='global', num_results=10, da
     }
     
     # Add date restriction if provided
-    if date_restrict:
+    if tbs_val:
+        payload["tbs"] = tbs_val
+    elif date_restrict:
         payload["tbs"] = f"qdr:{date_restrict}"
     
     headers = {
@@ -338,6 +345,11 @@ def search_serper(query, search_type='news', region='global', num_results=10, da
     
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 403 or (response.status_code == 400 and "credits" in response.text.lower()):
+             print(f"      ❌ ERROR: Serper API credits exhausted! Please check your plan.")
+             return []
+
         response.raise_for_status()
         data = response.json()
         
@@ -351,7 +363,7 @@ def search_serper(query, search_type='news', region='global', num_results=10, da
         return []
 
 
-def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe', 'australia'], date_restrict=None):
+def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe', 'australia'], days_back=None):
     """Search for news about a competitor across multiple regions"""
     all_results = []
     seen_urls = set()
@@ -364,9 +376,25 @@ def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe', 
         f'"{competitor_name}" "virtual assistant" OR "directory" OR screens',
     ]
     
+    today_str = datetime.datetime.now().strftime('%m/%d/%Y')
+
+    # API-side date filtering (tbs) is causing persistent 400 errors.
+    # We will disable it and rely on Python filtering (save_news_item) and Debrief Generator filtering.
+    tbs_val = None
+    # if days_back:
+    #     if days_back <= 1:
+    #         tbs_val = "qdr:d"
+    #     elif days_back <= 7:
+    #         tbs_val = "qdr:w"
+    #     elif days_back <= 31:
+    #         tbs_val = "qdr:m"
+    #     elif days_back <= 365:
+    #         tbs_val = "qdr:y"
+        # If > 365, leave None for full history
+    
     for region in regions_to_search:
         for query in queries:
-            results = search_serper(query, search_type='news', region=region, num_results=10, date_restrict=date_restrict)
+            results = search_serper(query, search_type='news', region=region, num_results=10, tbs_val=tbs_val)
             
             for r in results:
                 url = r.get('link', '')
@@ -390,7 +418,7 @@ def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe', 
     return all_results[:25]
 
 
-def analyze_with_claude(competitor_name, articles):
+def analyze_with_claude(competitor_name, articles, days_back=None):
     """Send articles to Claude for analysis"""
     if not articles:
         return None
@@ -429,9 +457,18 @@ Content: {snippet[:500]}
 ---
 """
         
+        today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        date_instr = ""
+        if days_back:
+            cutoff = datetime.datetime.now() - datetime.timedelta(days=days_back)
+            cutoff_str = cutoff.strftime('%Y-%m-%d')
+            date_instr = f"CRITICAL: IGNORE any news events that occurred before {cutoff_str}. Only include news from the last {days_back} days (since {cutoff_str})."
+
         prompt = ANALYSIS_PROMPT.format(
             competitor_name=competitor_name,
-            articles=articles_text
+            articles=articles_text,
+            today_date=today_str,
+            date_instruction=date_instr
         )
         
         # Retry logic
@@ -505,14 +542,14 @@ Content: {snippet[:500]}
     return {'news_items': all_news_items}
 
 
-def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], existing_urls=None, date_restrict=None):
+def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], existing_urls=None, days_back=None):
     """Fetch and analyze news for one competitor"""
     comp_id = competitor['id']
     name = competitor['name']
     
     print(f"\n  🔍 {name}", end="")
     
-    articles = search_news(name, regions, date_restrict=date_restrict)
+    articles = search_news(name, regions, days_back=days_back)
     
     if not articles:
         print(f" — no articles")
@@ -530,7 +567,7 @@ def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], 
     
     print(f" — {len(articles)} new...", end="")
     
-    analysis = analyze_with_claude(name, articles)
+    analysis = analyze_with_claude(name, articles, days_back=days_back)
     
     if not analysis:
         # print(f" (failed)")
@@ -618,9 +655,9 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
         deleted = clear_all_news()
         print(f"\n🧹 Cleared {deleted} entries")
 
-    date_restrict = None
+    search_days = None
     if days:
-        date_restrict = f"d{days}"
+        search_days = days
         print(f"\n📅 Last {days} days")
     elif not clean_start:
         last_fetch = get_last_fetch_date()
@@ -628,9 +665,8 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
             if isinstance(last_fetch, str):
                 last_fetch = datetime.datetime.fromisoformat(last_fetch.replace('Z', '+00:00'))
             days_since = (datetime.datetime.now(datetime.timezone.utc) - last_fetch).days
-            search_days = max(days_since + 1, 1)
-            search_days = min(search_days, 14)
-            date_restrict = f"d{search_days}"
+            days_diff = max(days_since + 1, 1)
+            search_days = min(days_diff, 14)
             print(f"\n📅 Auto-range: last {search_days} days")
         else:
             print(f"\n📅 Full history")
@@ -656,7 +692,8 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
             write_status('running', current_competitor=comp['name'], processed=i-1, total=total_competitors)
 
             print(f"[{i}/{len(competitors)}]", end="")
-            saved = fetch_news_for_competitor(comp, regions, existing_urls=existing_urls, date_restrict=date_restrict)
+            print(f"[{i}/{len(competitors)}]", end="")
+            saved = fetch_news_for_competitor(comp, regions, existing_urls=existing_urls, days_back=search_days)
             total_news += saved
 
             write_status('running', current_competitor=comp['name'], processed=i, total=total_competitors)

@@ -13,7 +13,11 @@ export default async function Home({
   searchParams: { competitorId?: string; minThreat?: string; unread?: string; starred?: string; region?: string; location?: string }
 }) {
   /* const minThreat = searchParams.minThreat ? parseInt(searchParams.minThreat) : 1 */
-  const where: any = {}
+  const where: any = {
+    competitor: {
+      status: { not: 'archived' }
+    }
+  }
 
   if (searchParams.competitorId) {
     where.competitorId = searchParams.competitorId

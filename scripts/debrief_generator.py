@@ -71,6 +71,7 @@ def fetch_recent_news(days=14):
         FROM "CompetitorNews" cn
         JOIN "Competitor" c ON cn."competitorId" = c.id
         WHERE cn.date >= %s AND cn.date <= %s
+        AND (c.status = 'active' OR c.status IS NULL)
         ORDER BY cn."threatLevel" DESC
         LIMIT 50
     """, (start.isoformat(), end.isoformat()))
