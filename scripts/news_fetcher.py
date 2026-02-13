@@ -251,10 +251,36 @@ def save_news_item(competitor_id, news_item):
         return False, str(e)
 
 
-def search_serper(query, search_type='news', region='global', num_results=10):
+def get_last_fetch_date():
+    """Get the date of the most recent news item in the DB to use as search start date"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT MAX("extractedAt") as last_fetch FROM "CompetitorNews"')
+        result = cursor.fetchone()
+        conn.close()
+        if result and result['last_fetch']:
+            return result['last_fetch']
+    except:
+        pass
+    return None
+
+
+def get_all_existing_urls():
+    """Fetch all existing source URLs from DB for fast duplicate checking"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT "sourceUrl" FROM "CompetitorNews"')
+    urls = {row['sourceUrl'] for row in cursor.fetchall()}
+    conn.close()
+    return urls
+
+
+def search_serper(query, search_type='news', region='global', num_results=10, date_restrict=None):
     """
     Search using Serper.dev API
     search_type: 'news' or 'search'
+    date_restrict: e.g. 'd3' for last 3 days, 'w1' for last week
     """
     if not SERPER_API_KEY:
         print("      ERROR: SERPER_API_KEY not set in .env")
@@ -270,6 +296,10 @@ def search_serper(query, search_type='news', region='global', num_results=10):
         "hl": region_config['hl'],
         "num": num_results
     }
+    
+    # Add date restriction if provided
+    if date_restrict:
+        payload["tbs"] = f"qdr:{date_restrict}"
     
     headers = {
         "X-API-KEY": SERPER_API_KEY,
@@ -292,9 +322,10 @@ def search_serper(query, search_type='news', region='global', num_results=10):
         return []
 
 
-def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe']):
+def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe'], date_restrict=None):
     """
     Search for news about a competitor across multiple regions
+    date_restrict: e.g. 'd3' for last 3 days, 'w1' for last week
     """
     all_results = []
     seen_urls = set()
@@ -307,7 +338,7 @@ def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe'])
     
     for region in regions_to_search:
         for query in queries:
-            results = search_serper(query, search_type='news', region=region, num_results=5)
+            results = search_serper(query, search_type='news', region=region, num_results=5, date_restrict=date_restrict)
             
             for r in results:
                 url = r.get('link', '')
@@ -317,7 +348,7 @@ def search_news(competitor_name, regions_to_search=['global', 'mena', 'europe'])
                     all_results.append(r)
             
             # Also try regular search for more coverage
-            results = search_serper(query, search_type='search', region=region, num_results=5)
+            results = search_serper(query, search_type='search', region=region, num_results=5, date_restrict=date_restrict)
             
             for r in results:
                 url = r.get('link', '')
@@ -399,20 +430,31 @@ Content: {snippet[:500]}
         return None
 
 
-def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe']):
+def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe'], existing_urls=None, date_restrict=None):
     """Fetch and analyze news for one competitor"""
     comp_id = competitor['id']
     name = competitor['name']
     
-    print(f"\n  🔍 {name}")
+    print(f"\n  🔍 {name}", end="")
     
-    articles = search_news(name, regions)
+    articles = search_news(name, regions, date_restrict=date_restrict)
     
     if not articles:
-        print(f"      No articles found")
+        print(f" — no articles found")
         return 0
     
-    print(f"      Found {len(articles)} articles, analyzing with Claude...")
+    # Pre-filter: remove articles whose URLs are already in the DB
+    if existing_urls:
+        new_articles = [a for a in articles if a.get('link', '') not in existing_urls]
+        skipped = len(articles) - len(new_articles)
+        if skipped > 0:
+            print(f" — {len(articles)} found, {skipped} already known", end="")
+        if not new_articles:
+            print(f" — all duplicates, skipping Claude")
+            return 0
+        articles = new_articles
+    
+    print(f" — analyzing {len(articles)} new articles...")
     
     analysis = analyze_with_claude(name, articles)
     
@@ -431,9 +473,8 @@ def fetch_news_for_competitor(competitor, regions=['global', 'mena', 'europe']):
         success, status = save_news_item(comp_id, item)
         if success:
             saved += 1
-            threat = item.get('threat_level', '?')
             region = item.get('region', 'GLOBAL')
-            print(f"      ✅ [{threat}] [{region}] {item.get('title', '')[:45]}...")
+            print(f"      ✅ [{region}] {item.get('title', '')[:50]}...")
         elif status == "duplicate":
             print(f"      ⏭️  Duplicate: {item.get('title', '')[:40]}...")
     
@@ -487,8 +528,10 @@ def clear_all_news():
     return deleted
 
 
-def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'europe']):
-    """Main function"""
+def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'europe'], days=None):
+    """Main function
+    days: Only search for articles from the last N days. If None, auto-detects from last fetch.
+    """
     print("=" * 60)
     print("🎯 ABUZZ COMPETITOR INTELLIGENCE FETCHER")
     print("   Powered by Serper.dev + Claude AI")
@@ -504,8 +547,32 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
         deleted = clear_all_news()
         print(f"\n🧹 Cleared {deleted} news entries")
 
+    # Determine date restriction for Serper searches
+    date_restrict = None
+    if days:
+        date_restrict = f"d{days}"
+        print(f"\n📅 Searching last {days} day(s) only")
+    elif not clean_start:
+        # Auto-detect: calculate days since last fetch
+        last_fetch = get_last_fetch_date()
+        if last_fetch:
+            if isinstance(last_fetch, str):
+                last_fetch = datetime.datetime.fromisoformat(last_fetch.replace('Z', '+00:00'))
+            days_since = (datetime.datetime.now(datetime.timezone.utc) - last_fetch).days
+            search_days = max(days_since + 1, 1)  # At least 1 day, +1 for overlap
+            search_days = min(search_days, 14)  # Cap at 2 weeks
+            date_restrict = f"d{search_days}"
+            print(f"\n📅 Last fetch: {last_fetch.strftime('%b %d, %Y')} — searching last {search_days} day(s)")
+        else:
+            print(f"\n📅 First run — searching all available articles")
+
+    # Pre-load all existing URLs for fast duplicate checking
+    print("📦 Loading existing URLs from database...")
+    existing_urls = get_all_existing_urls()
+    print(f"   {len(existing_urls)} existing articles in DB")
+
     competitors = get_competitors()
-    print(f"\n📋 Found {len(competitors)} competitors")
+    print(f"📋 Found {len(competitors)} competitors")
     print(f"🌍 Searching regions: {', '.join(regions)}")
 
     if limit:
@@ -523,8 +590,8 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
             # Update status before processing each competitor
             write_status('running', current_competitor=comp['name'], processed=i-1, total=total_competitors)
 
-            print(f"\n[{i}/{len(competitors)}]", end="")
-            saved = fetch_news_for_competitor(comp, regions)
+            print(f"[{i}/{len(competitors)}]", end="")
+            saved = fetch_news_for_competitor(comp, regions, existing_urls=existing_urls, date_restrict=date_restrict)
             total_news += saved
 
             # Update status after processing
@@ -532,12 +599,12 @@ def fetch_all_news(limit=None, clean_start=False, regions=['global', 'mena', 'eu
 
             # Rate limiting - Serper is fast but let's be nice
             if i < len(competitors):
-                time.sleep(2)
+                time.sleep(1)
 
         # Write completion status
         write_status('completed', processed=total_competitors, total=total_competitors)
 
-        print("\n\n" + "=" * 60)
+        print("\n" + "=" * 60)
         print(f"✅ COMPLETE: Added {total_news} news items")
         print("=" * 60)
 
@@ -558,6 +625,7 @@ if __name__ == "__main__":
     parser.add_argument('--clean', action='store_true', help='Clear all news first')
     parser.add_argument('--region', type=str, help='Specific region: global, mena, europe, apac')
     parser.add_argument('--mena', action='store_true', help='Focus on MENA region')
+    parser.add_argument('--days', type=int, help='Only search last N days (e.g. --days 3)')
     args = parser.parse_args()
     
     # Determine regions to search
@@ -568,8 +636,8 @@ if __name__ == "__main__":
         regions = ['mena', 'global']
     
     if args.test:
-        fetch_all_news(limit=5, clean_start=True, regions=regions)
+        fetch_all_news(limit=5, clean_start=True, regions=regions, days=args.days)
     elif args.limit:
-        fetch_all_news(limit=args.limit, clean_start=args.clean, regions=regions)
+        fetch_all_news(limit=args.limit, clean_start=args.clean, regions=regions, days=args.days)
     else:
-        fetch_all_news(clean_start=args.clean, regions=regions)
+        fetch_all_news(clean_start=args.clean, regions=regions, days=args.days)

@@ -1,42 +1,35 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { format, subDays } from 'date-fns'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Sidebar } from '@/components/Sidebar'
+import { Star, ExternalLink, FileText } from 'lucide-react'
 
 export default function WeeklyDebrief() {
     const [debrief, setDebrief] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
-    const [itemCount, setItemCount] = useState<number | null>(null)
     const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null)
     const [periodStart, setPeriodStart] = useState<Date | null>(null)
     const [periodEnd, setPeriodEnd] = useState<Date | null>(null)
+    const [topArticles, setTopArticles] = useState<any[]>([])
 
-    // Fetch latest debrief from DB + count
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch count and latest debrief in parallel
-                const [countRes, debriefRes] = await Promise.all([
-                    fetch('/api/debrief', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            mode: 'count',
-                            startDate: subDays(new Date(), 7).toISOString(),
-                            endDate: new Date().toISOString(),
-                        })
-                    }),
+                const startDate = subDays(new Date(), 7).toISOString()
+                const endDate = new Date().toISOString()
+
+                const [debriefRes, articlesRes] = await Promise.all([
                     fetch('/api/debrief', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ mode: 'latest' })
+                    }),
+                    fetch('/api/debrief', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'top_articles', startDate, endDate })
                     })
                 ])
-
-                const countData = await countRes.json()
-                setItemCount(countData.count)
 
                 const debriefData = await debriefRes.json()
                 if (debriefData.response) {
@@ -45,6 +38,9 @@ export default function WeeklyDebrief() {
                     setPeriodStart(new Date(debriefData.periodStart))
                     setPeriodEnd(new Date(debriefData.periodEnd))
                 }
+
+                const articlesData = await articlesRes.json()
+                setTopArticles(articlesData.topArticles || [])
             } catch (e) {
                 console.error('Failed to load debrief:', e)
             } finally {
@@ -54,12 +50,39 @@ export default function WeeklyDebrief() {
         fetchData()
     }, [])
 
-    const handlePrint = () => {
-        window.print()
-    }
+    const handlePrint = () => window.print()
 
     const displayStart = periodStart || subDays(new Date(), 7)
     const displayEnd = periodEnd || new Date()
+
+    // Extract the Executive Summary from the debrief markdown
+    const getShortSummary = (md: string): string[] => {
+        const lines = md.split('\n')
+        let inSummary = false
+        const bullets: string[] = []
+        for (const line of lines) {
+            // Look for the EXECUTIVE SUMMARY heading
+            if (line.toLowerCase().includes('executive summary')) {
+                inSummary = true
+                continue
+            }
+            // Stop at the next major heading
+            if (inSummary && line.startsWith('## ')) break
+            // Collect content lines
+            if (inSummary && line.trim() && !line.startsWith('---')) {
+                const clean = line.trim()
+                    .replace(/\*\*/g, '')
+                    .replace(/\*/g, '')
+                    .replace(/^[-•]\s*/, '')
+                    .replace(/^>\s*/, '')
+                if (clean.length > 10) {
+                    bullets.push(clean)
+                }
+                if (bullets.length >= 5) break
+            }
+        }
+        return bullets
+    }
 
     return (
         <div className="flex min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -69,81 +92,108 @@ export default function WeeklyDebrief() {
                 </Suspense>
             </div>
 
-            <main className="flex-1 ml-64 p-12 print:ml-0 print:p-0">
-                <div className="max-w-4xl mx-auto">
+            <main className="flex-1 ml-64 p-8 md:p-12 print:ml-0 print:p-0">
+                <div className="max-w-3xl mx-auto">
                     {/* Header */}
-                    <div className="flex items-end justify-between mb-12 border-b border-slate-800 pb-6 print:border-b-2 print:border-black">
+                    <div className="flex items-end justify-between mb-10 border-b border-slate-800 pb-5">
                         <div>
-                            <h1 className="text-3xl font-bold text-white mb-2 print:text-black">Weekly Intelligence Debrief</h1>
-                            <div className="flex items-center gap-4 text-slate-400 print:text-slate-600">
-                                <span className="print:block">
-                                    {`${format(displayStart, 'MMM d')} - ${format(displayEnd, 'MMM d, yyyy')}`}
-                                </span>
-
-                                {itemCount !== null && (
-                                    <span className={`text-xs px-2 py-1 rounded-full border ${itemCount > 0 ? 'bg-cyan-950/30 text-cyan-400 border-cyan-900/50' : 'bg-red-950/30 text-red-400 border-red-900/50'}`}>
-                                        {itemCount} signals found
-                                    </span>
-                                )}
-
-                                {lastGeneratedAt && (
-                                    <span className="text-xs text-slate-500 border-l border-slate-800 pl-4 ml-2">
-                                        Generated: {format(new Date(lastGeneratedAt), 'MMM d, h:mm a')}
-                                    </span>
-                                )}
-                            </div>
+                            <h1 className="text-2xl font-bold text-white mb-1">Weekly Debrief</h1>
+                            <p className="text-slate-500 text-sm">
+                                {`${format(displayStart, 'MMM d')} — ${format(displayEnd, 'MMM d, yyyy')}`}
+                            </p>
                         </div>
-                        <div className="flex gap-3 print:hidden">
-                            <button
-                                onClick={handlePrint}
-                                disabled={!debrief}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Print / Save PDF
-                            </button>
-                        </div>
+                        <button
+                            onClick={handlePrint}
+                            disabled={!debrief && topArticles.length === 0}
+                            className="print:hidden px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md text-sm transition-colors disabled:opacity-50"
+                        >
+                            Print / PDF
+                        </button>
                     </div>
 
-                    {/* Loading State */}
+                    {/* Loading */}
                     {loading && (
                         <div className="py-20 text-center animate-pulse">
-                            <div className="w-16 h-16 bg-slate-800 rounded-full mx-auto mb-6 flex items-center justify-center">
-                                <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
-                            </div>
-                            <h2 className="text-xl font-medium text-slate-300">Loading Debrief...</h2>
+                            <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4"></div>
+                            <p className="text-slate-400">Loading debrief...</p>
                         </div>
                     )}
 
-                    {/* Report Content */}
-                    {debrief && !loading && (
-                        <div className="prose prose-invert prose-slate max-w-none print:prose-black">
-                            <style jsx global>{`
-                .prose h2 { color: #22d3ee; margin-top: 2em; border-bottom: 1px solid #1e293b; padding-bottom: 0.5em; }
-                .prose h3 { color: #cbd5e1; margin-top: 1.5em; }
-                .prose strong { color: #fff; }
-                .prose table { border-collapse: collapse; width: 100%; margin: 1.5em 0; }
-                .prose th { background: #0f172a; color: #22d3ee; padding: 0.75em 1em; border: 1px solid #1e293b; text-align: left; font-size: 0.85em; }
-                .prose td { padding: 0.75em 1em; border: 1px solid #1e293b; font-size: 0.85em; }
-                .prose tr:nth-child(even) { background: #0f172a40; }
-                .print\\:prose-black h2 { color: #000; border-bottom-color: #ddd; }
-                .print\\:prose-black strong { color: #000; }
-                .print\\:prose-black th { background: #f1f5f9; color: #000; border-color: #cbd5e1; }
-                .print\\:prose-black td { border-color: #cbd5e1; }
-              `}</style>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{debrief}</ReactMarkdown>
-                        </div>
-                    )}
+                    {!loading && (
+                        <>
+                            {/* ============ TOP 3 ARTICLES ============ */}
+                            {topArticles.length > 0 && (
+                                <section className="mb-10">
+                                    <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <Star className="w-4 h-4 text-amber-400" />
+                                        Top Articles This Week
+                                    </h2>
+                                    <div className="space-y-3">
+                                        {topArticles.map((article: any, idx: number) => (
+                                            <a
+                                                key={article.id}
+                                                href={article.sourceUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block bg-slate-900/60 border border-slate-800 rounded-xl p-5 hover:border-slate-700 hover:bg-slate-900/80 transition-all group"
+                                            >
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex-1 min-w-0">
+                                                        <h3 className="text-base font-semibold text-white group-hover:text-cyan-300 transition-colors leading-snug mb-1">
+                                                            {article.title}
+                                                        </h3>
+                                                        <p className="text-sm text-slate-400 line-clamp-2">{article.summary}</p>
+                                                        <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                                                            <span>{article.competitor?.name}</span>
+                                                            <span>·</span>
+                                                            <span>{format(new Date(article.date), 'MMM d, yyyy')}</span>
+                                                        </div>
+                                                    </div>
+                                                    <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-cyan-400 transition-colors shrink-0 mt-1" />
+                                                </div>
+                                            </a>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
 
-                    {/* Empty State */}
-                    {!debrief && !loading && (
-                        <div className="py-20 text-center border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
-                            <p className="text-slate-500">
-                                No debrief generated yet. Run the generator script locally:
-                            </p>
-                            <code className="block mt-4 text-cyan-400 text-sm bg-slate-900 px-4 py-2 rounded-lg inline-block">
-                                ./.venv/bin/python scripts/debrief_generator.py
-                            </code>
-                        </div>
+                            {/* ============ SUMMARY ============ */}
+                            {debrief && (
+                                <section className="mb-10">
+                                    <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-cyan-400" />
+                                        Summary
+                                    </h2>
+                                    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+                                        <ul className="space-y-2">
+                                            {getShortSummary(debrief).map((point, i) => (
+                                                <li key={i} className="flex items-start gap-3 text-sm text-slate-300 leading-relaxed">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
+                                                    {point}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                    {lastGeneratedAt && (
+                                        <p className="text-[10px] text-slate-600 mt-2">
+                                            Generated {format(new Date(lastGeneratedAt), 'MMM d, yyyy \'at\' h:mm a')}
+                                        </p>
+                                    )}
+                                </section>
+                            )}
+
+                            {/* Empty State */}
+                            {!debrief && topArticles.length === 0 && (
+                                <div className="py-20 text-center border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
+                                    <p className="text-slate-500">
+                                        No debrief generated yet. Run the generator script locally:
+                                    </p>
+                                    <code className="block mt-4 text-cyan-400 text-sm bg-slate-900 px-4 py-2 rounded-lg inline-block">
+                                        ./.venv/bin/python scripts/debrief_generator.py
+                                    </code>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </main>

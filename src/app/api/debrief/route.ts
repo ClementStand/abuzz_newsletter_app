@@ -19,6 +19,33 @@ export async function POST(req: Request) {
             return NextResponse.json({ count })
         }
 
+        // Top articles mode: return top 3 + all links from last 7 days
+        if (mode === 'top_articles') {
+            const sevenDaysAgo = startDate ? new Date(startDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            const now = endDate ? new Date(endDate) : new Date()
+
+            const recentNews = await prisma.competitorNews.findMany({
+                where: {
+                    date: { gte: sevenDaysAgo, lte: now },
+                },
+                orderBy: [{ threatLevel: 'desc' }, { date: 'desc' }],
+                include: { competitor: true },
+            })
+
+            const topArticles = recentNews.slice(0, 3)
+            const allLinks = recentNews.map(n => ({
+                id: n.id,
+                title: n.title,
+                sourceUrl: n.sourceUrl,
+                competitorName: n.competitor.name,
+                eventType: n.eventType,
+                date: n.date,
+                threatLevel: n.threatLevel,
+            }))
+
+            return NextResponse.json({ topArticles, allLinks })
+        }
+
         // Latest mode: return the most recent debrief from DB
         const latest = await prisma.debrief.findFirst({
             orderBy: { generatedAt: 'desc' },
