@@ -28,17 +28,33 @@ export default async function Home({
   }
 
   if (searchParams.region) {
-    // Map sidebar values to DB values
     let regionVal = searchParams.region
     if (regionVal === 'Middle East') regionVal = 'MENA'
 
-    where.region = regionVal
+    // Smart region matching: map broad region names to possible DB values
+    const regionMappings: { [key: string]: string[] } = {
+      'North America': ['north america', 'us', 'usa', 'canada', 'america'],
+      'Europe': ['europe', 'uk', 'germany', 'france', 'spain', 'italy', 'netherlands', 'sweden', 'denmark', 'ireland', 'switzerland', 'belgium', 'austria', 'poland', 'norway', 'finland'],
+      'MENA': ['mena', 'middle east', 'uae', 'saudi', 'qatar', 'dubai', 'abu dhabi', 'israel', 'turkey', 'egypt'],
+      'APAC': ['apac', 'asia', 'china', 'japan', 'korea', 'india', 'singapore', 'australia', 'pacific'],
+      'Global': ['global'],
+    }
+
+    const keywords = regionMappings[regionVal]
+    if (keywords) {
+      where.OR = keywords.map(k => ({
+        region: { contains: k, mode: 'insensitive' }
+      }))
+    } else {
+      where.region = { equals: regionVal, mode: 'insensitive' }
+    }
   }
 
   if (searchParams.location) {
-    // Fuzzy search within the JSON string
+    // Case-insensitive fuzzy search within the JSON string
     where.details = {
-      contains: searchParams.location
+      contains: searchParams.location,
+      mode: 'insensitive'
     }
   }
 
