@@ -27,8 +27,18 @@ export async function POST(req: Request) {
             const recentNews = await prisma.competitorNews.findMany({
                 where: {
                     date: { gte: sevenDaysAgo, lte: now },
+                    AND: [
+                        { title: { not: { contains: 'Colorado River' } } },
+                        { summary: { not: { contains: 'Colorado River' } } },
+                        { title: { not: { contains: 'Lake Mead' } } }
+                    ]
                 },
-                orderBy: [{ threatLevel: 'desc' }, { date: 'desc' }],
+                orderBy: [
+                    { threatLevel: 'desc' },
+                    // Prioritize specific regions if threat level is same
+                    // { region: 'asc' }, // Can't easily do custom sort in Prisma without raw query
+                    { date: 'desc' }
+                ],
                 include: { competitor: true },
             })
 

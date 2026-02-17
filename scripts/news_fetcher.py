@@ -302,7 +302,7 @@ async def search_news_async(competitor_name, regions_to_search, days_back=None, 
         f'"{search_name}" contract OR deal OR partnership OR launch OR expansion',
         f'"{search_name}" mall OR airport OR hospital OR university',
         f'"{search_name}" wayfinding OR "digital signage" OR kiosk',
-        f'"{search_name}" "virtual assistant" OR "directory" OR screens',
+        f'"{search_name}" "virtual assistant" OR "directory" OR screens OR "concierge" OR "ai assistant"',
     ]
 
     # Build all (query, region) task pairs
@@ -519,6 +519,7 @@ Your job is to find REAL NEWS EVENTS only. Include:
 - New contracts, deals, project wins (especially malls, airports, hospitals)
 - Partnerships, acquisitions, mergers, joint ventures
 - Product launches (new kiosks, wayfinding software, mobile apps)
+- AI Concierge / Digital Assistant launches (CRITICAL)
 - Trade show appearances with NEW products
 - Financial results, funding rounds, investment news
 - New office openings (especially in MENA/Europe)
@@ -532,6 +533,8 @@ STRICTLY EXCLUDE (these are NOT news):
 - "About us" pages
 - Blog posts that are just general advice (content marketing)
 - News about a PERSON named "{competitor_name}" (e.g. "Joseph was hospitalized") unless they are the CEO/Founder of the company. Ensure it is about the COMPANY.
+- Staff anniversaries, "Employee of the Month", or general industry trends without specific company news.
+- For "Desert River": EXCLUDE all news about the "Colorado River", "water agreements", "drought", or "Lake Mead". Focus ONLY on digital screens/solutions.
 
 If NONE of the articles contain real news events, respond with: {{"no_relevant_news": true}}
 
@@ -568,10 +571,10 @@ Threat Level Guide:
 - 1: Routine news, minimal impact
 - 2: Minor development
 - 3: Moderate competitive move
-- 4: Significant threat (e.g. major new mall project in UAE/Saudi)
-- 5: Major threat (direct competitor winning a key account or launching a clone product)
+- 4: Significant threat (e.g. major new mall project in UAE/Saudi/Spain)
+- 5: CRITICAL: Launch of an AI-driven "Concierge" or "Digital Assistant" feature, or direct competitor winning a key account.
 
-CRITICAL: Assign higher threat levels (4-5) for news in MENA (UAE, Saudi Arabia, Qatar) as these are our primary markets.
+CRITICAL: Assign highest threat levels (4-5) for news in MENA (UAE, Saudi, Qatar) and Europe (Spain, France).
 
 DATE EXTRACTION INSTRUCTIONS:
 - Use the EXACT "Published Date" provided.
