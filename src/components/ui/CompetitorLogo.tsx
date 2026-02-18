@@ -10,13 +10,13 @@ interface CompetitorLogoProps {
 }
 
 export function CompetitorLogo({ name, website, className }: CompetitorLogoProps) {
-    if (!name) {
-        return <div className={cn("bg-slate-800 animate-pulse", className)} />
-    }
-
     const [fallbackStage, setFallbackStage] = useState(0)
     const [isLoading, setIsLoading] = useState(true)
     const imgRef = useRef<HTMLImageElement>(null)
+
+    if (!name) {
+        return <div className={cn("bg-slate-800 animate-pulse", className)} />
+    }
 
     const getLogoUrl = (url: string | null | undefined, stage: number) => {
         if (!url || url.trim() === '') return null

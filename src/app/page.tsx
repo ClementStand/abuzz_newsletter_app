@@ -1,21 +1,43 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
+import { REGION_KEYWORDS } from '../lib/regions'
 import { Sidebar } from '../components/Sidebar'
 import NewsFeed from '../components/NewsFeed'
-import ThreatFilter from '../components/ThreatFilter'
 import { RightSidebar } from '../components/RightSidebar'
 import SurveillanceMap from '../components/SurveillanceMap'
-import { DashboardRefreshButton } from '../components/ui/DashboardRefreshButton'
 import { subHours, subDays } from 'date-fns'
+
+import { redirect } from 'next/navigation'
+import { createClient } from '@/utils/supabase/server'
 
 export default async function Home({
   searchParams,
 }: {
   searchParams: { competitorId?: string; minThreat?: string; unread?: string; starred?: string; region?: string; location?: string }
 }) {
-  /* const minThreat = searchParams.minThreat ? parseInt(searchParams.minThreat) : 1 */
-  const where: any = {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  // Get User Profile & Org
+  const userProfile = await prisma.userProfile.findUnique({
+    where: { email: user.email! },
+    include: { organization: true }
+  })
+
+  if (!userProfile?.organizationId) {
+    redirect('/onboarding')
+  }
+
+  const org = userProfile.organization
+
+  const where: Prisma.CompetitorNewsWhereInput = {
     competitor: {
-      status: { not: 'archived' }
+      status: { not: 'archived' },
+      organizationId: userProfile.organizationId
     }
   }
 
@@ -35,16 +57,7 @@ export default async function Home({
     let regionVal = searchParams.region
     if (regionVal === 'Middle East') regionVal = 'MENA'
 
-    // Smart region matching: map broad region names to possible DB values
-    const regionMappings: { [key: string]: string[] } = {
-      'North America': ['north america', 'us', 'usa', 'canada', 'america'],
-      'Europe': ['europe', 'uk', 'germany', 'france', 'spain', 'italy', 'netherlands', 'sweden', 'denmark', 'ireland', 'switzerland', 'belgium', 'austria', 'poland', 'norway', 'finland'],
-      'MENA': ['mena', 'middle east', 'uae', 'saudi', 'qatar', 'dubai', 'abu dhabi', 'israel', 'turkey', 'egypt'],
-      'APAC': ['apac', 'asia', 'china', 'japan', 'korea', 'india', 'singapore', 'australia', 'pacific'],
-      'Global': ['global'],
-    }
-
-    const keywords = regionMappings[regionVal]
+    const keywords = REGION_KEYWORDS[regionVal]
     if (keywords) {
       where.OR = keywords.map(k => ({
         region: { contains: k, mode: 'insensitive' }
@@ -62,11 +75,12 @@ export default async function Home({
     }
   }
 
-  // 3. Fetch Data
+  // 3. Fetch Data (paginated — max 200 items for performance)
   const news = await prisma.competitorNews.findMany({
     where,
     orderBy: { date: 'desc' },
     include: { competitor: true },
+    take: 200,
   })
 
   // Calculate Stats
@@ -75,18 +89,18 @@ export default async function Home({
 
   const stats = {
     total: news.length,
-    highThreat: news.filter((n: any) => n.threatLevel >= 4).length,
-    unread: news.filter((n: any) => !n.isRead).length,
-    last24h: news.filter((n: any) => new Date(n.date) > last24h).length
+    highThreat: news.filter((n) => n.threatLevel >= 4).length,
+    unread: news.filter((n) => !n.isRead).length,
+    last24h: news.filter((n) => new Date(n.date) > last24h).length
   }
 
   // Calculate Top Movers (Last 7 Days)
   const last7Days = subDays(now, 7)
 
-  const recentNews = news.filter((n: any) => new Date(n.date) >= last7Days)
+  const recentNews = news.filter((n) => new Date(n.date) >= last7Days)
   const competitorCounts: Record<string, number> = {}
 
-  recentNews.forEach((n: any) => {
+  recentNews.forEach((n) => {
     const name = n.competitor.name
     competitorCounts[name] = (competitorCounts[name] || 0) + 1
   })
@@ -99,9 +113,9 @@ export default async function Home({
 
   return (
     <div className="flex min-h-screen bg-background text-foreground font-sans selection:bg-cyan-900 selection:text-cyan-100">
-      <Sidebar />
+      <Sidebar orgName={org.name} />
 
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 lg:ml-64 p-4 lg:p-8">
         <div className="flex items-start gap-8 max-w-[1600px] mx-auto">
 
           {/* Main Feed Column */}

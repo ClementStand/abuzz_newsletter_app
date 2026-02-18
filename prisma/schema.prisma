@@ -1,3 +1,28 @@
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  industry    String?
+  keywords    String[] // Target keywords for this org
+  regions     String[] // Target regions for this org
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  users       UserProfile[]
+  competitors Competitor[]
+  debriefs    Debrief[]
+}
+
+model UserProfile {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  role           String       @default("member") // "admin", "member"
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
 model Competitor {
   id          String   @id @default(cuid())
   name        String   @unique
@@ -13,7 +38,13 @@ model Competitor {
   status      String   @default("active")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
   news        CompetitorNews[]
+
+  @@unique([organizationId, name]) // Names must be unique per org
 }
 
 model CompetitorNews {
@@ -45,6 +76,9 @@ model Debrief {
   periodEnd   DateTime
   itemCount   Int
   generatedAt DateTime @default(now())
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 generator client {

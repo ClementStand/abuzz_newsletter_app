@@ -6,8 +6,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "NavPro Intel",
-  description: "Daily Competitor Intelligence",
+  title: process.env.NEXT_PUBLIC_APP_NAME || "Market Analyser",
+  description: process.env.NEXT_PUBLIC_APP_DESCRIPTION || "Competitor Intelligence Platform",
   icons: {
     icon: "/logo.png",
   },

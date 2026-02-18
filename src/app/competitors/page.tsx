@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Sidebar } from '@/components/Sidebar'
 import { CompetitorLogo } from "@/components/ui/CompetitorLogo"
 import { Plus, Archive, RefreshCw, X } from 'lucide-react'
+import { APP_CONFIG } from '@/lib/config'
 
 export default function CompetitorsPage() {
     const [competitors, setCompetitors] = useState<any[]>([])
@@ -76,7 +77,7 @@ export default function CompetitorsPage() {
                 <Sidebar />
             </Suspense>
 
-            <main className="flex-1 ml-64 p-12">
+            <main className="flex-1 lg:ml-64 p-4 lg:p-12">
                 <div className="max-w-4xl mx-auto">
                     <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-6">
                         <div>
@@ -126,10 +127,11 @@ export default function CompetitorsPage() {
                                             className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
                                         >
                                             <option value="Global">Global</option>
-                                            <option value="MENA">MENA</option>
-                                            <option value="Europe">Europe</option>
-                                            <option value="North America">North America</option>
-                                            <option value="APAC">APAC</option>
+                                            {Object.keys(APP_CONFIG.regions)
+                                                .filter(r => r !== 'Global')
+                                                .map(r => (
+                                                    <option key={r} value={r}>{r}</option>
+                                                ))}
                                         </select>
                                     </div>
                                 </div>

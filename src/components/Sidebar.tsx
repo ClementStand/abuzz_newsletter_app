@@ -10,11 +10,19 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { RefreshButton } from "@/components/ui/RefreshButton"
 import { CompetitorLogo } from "@/components/ui/CompetitorLogo"
-import { Loader2, LayoutDashboard, FileText, Settings } from "lucide-react"
+import { Loader2, LayoutDashboard, FileText, Settings, Menu, X } from "lucide-react"
+import { matchesRegion, APP_CONFIG } from "@/lib/config"
 
-export function Sidebar() {
+interface SidebarProps {
+    orgName?: string
+}
+
+export function Sidebar({ orgName }: SidebarProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
+
+    // Mobile menu state
+    const [mobileOpen, setMobileOpen] = useState(false)
 
     // State
     const [competitors, setCompetitors] = useState<any[]>([])
@@ -102,127 +110,139 @@ export function Sidebar() {
 
     // Filtered competitors
     const filteredCompetitors = competitors.filter(c => {
-        const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase())
+        const matchSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase())
 
-        let matchesRegion = true
+        let regionMatch = true
         if (selectedRegion) {
-            const r = (c.region || '').toLowerCase()
-            const s = selectedRegion.toLowerCase()
-
-            // Smart Continent Matching
-            if (s === 'north america') matchesRegion = r.includes('usa') || r.includes('canada') || r.includes('america')
-            else if (s === 'europe') matchesRegion = r.includes('europe') || r.includes('uk') || r.includes('germany') || r.includes('france')
-            else if (s === 'apac') matchesRegion = r.includes('asia') || r.includes('china') || r.includes('japan') || r.includes('australia')
-            else if (s === 'middle east') matchesRegion = r.includes('middle east') || r.includes('uae') || r.includes('saudi') || r.includes('qatar')
-            else matchesRegion = r.includes(s)
+            regionMatch = matchesRegion(c.region || '', selectedRegion)
         }
 
-        return matchesSearch && matchesRegion
+        return matchSearch && regionMatch
     })
 
     return (
-        <div className="w-64 bg-slate-950/50 backdrop-blur-xl border-r border-slate-800 h-screen p-4 flex flex-col fixed left-0 top-0 overflow-y-auto z-50">
-            {/* ... Header ... */}
+        <>
+            {/* Mobile hamburger button */}
+            <button
+                onClick={() => setMobileOpen(!mobileOpen)}
+                className="lg:hidden fixed top-4 left-4 z-[60] p-2 bg-slate-900 border border-slate-700 rounded-md text-slate-300 hover:text-white"
+            >
+                {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
 
-            <div className="space-y-6 flex-1">
-                {/* Toggles */}
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="unread" className="text-sm font-medium text-slate-300">Unread Only</Label>
-                        <Switch id="unread" checked={unreadOnly} onCheckedChange={setUnreadOnly} className="data-[state=checked]:bg-cyan-500" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="starred" className="text-sm font-medium text-slate-300">Starred Only</Label>
-                        <Switch id="starred" checked={starredOnly} onCheckedChange={setStarredOnly} className="data-[state=checked]:bg-cyan-500" />
-                    </div>
+            {/* Overlay for mobile */}
+            {mobileOpen && (
+                <div
+                    className="lg:hidden fixed inset-0 bg-black/60 z-40"
+                    onClick={() => setMobileOpen(false)}
+                />
+            )}
+
+            <div className={`w-64 bg-slate-950/50 backdrop-blur-xl border-r border-slate-800 h-screen p-4 flex flex-col fixed left-0 top-0 overflow-y-auto z-50 transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+
+                <div className="mb-8 px-2 pt-2">
+                    <h1 className="font-bold text-xl tracking-tight text-white">
+                        {orgName || process.env.NEXT_PUBLIC_APP_NAME || 'Market Analyser'}
+                    </h1>
                 </div>
 
-                {/* Region Filter (Cleaned) */}
-                <div className="space-y-2">
-                    <Label className="text-slate-300">Region</Label>
-                    <select
-                        className="w-full bg-slate-900 border border-slate-800 text-slate-200 text-sm rounded-md px-3 py-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
-                        value={selectedRegion || ''}
-                        onChange={(e) => setSelectedRegion(e.target.value || null)}
-                    >
-                        <option value="">All Regions</option>
-                        <option value="North America">North America</option>
-                        <option value="Europe">Europe</option>
-                        <option value="Middle East">MENA (Middle East)</option>
-                        <option value="APAC">APAC</option>
-                        <option value="Global">Global</option>
-                    </select>
-                </div>
+                <div className="space-y-6 flex-1">
+                    {/* Toggles */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="unread" className="text-sm font-medium text-slate-300">Unread Only</Label>
+                            <Switch id="unread" checked={unreadOnly} onCheckedChange={setUnreadOnly} className="data-[state=checked]:bg-cyan-500" />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="starred" className="text-sm font-medium text-slate-300">Starred Only</Label>
+                            <Switch id="starred" checked={starredOnly} onCheckedChange={setStarredOnly} className="data-[state=checked]:bg-cyan-500" />
+                        </div>
+                    </div>
 
-                {/* Competitors List */}
-                <div className="space-y-3">
-                    <Link href="/" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-cyan-400 hover:bg-slate-900/50 rounded-lg transition-colors group">
-                        <LayoutDashboard className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
-                        Dashboard
-                    </Link>
-                    <Link href="/debrief" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-cyan-400 hover:bg-slate-900/50 rounded-lg transition-colors group">
-                        <FileText className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
-                        Weekly Debrief
-                    </Link>
-                    <Link href="/competitors" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-cyan-400 hover:bg-slate-900/50 rounded-lg transition-colors group">
-                        <Settings className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
-                        Manage Competitors
-                    </Link>    {/* Search Input */}
-                    <input
-                        type="text"
-                        placeholder="Filter competitors..."
-                        className="w-full text-sm px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 placeholder:text-slate-600"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-
-                    <div className="space-y-1">
-                        <button
-                            onClick={() => setSelectedCompetitor(null)}
-                            className={`w-full text-left px-2 py-1.5 rounded-md text-sm transition-all duration-200 ${!selectedCompetitor ? 'bg-cyan-950/30 text-cyan-400 font-medium border border-cyan-900/50' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
+                    {/* Region Filter (Cleaned) */}
+                    <div className="space-y-2">
+                        <Label className="text-slate-300">Region</Label>
+                        <select
+                            className="w-full bg-slate-900 border border-slate-800 text-slate-200 text-sm rounded-md px-3 py-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                            value={selectedRegion || ''}
+                            onChange={(e) => setSelectedRegion(e.target.value || null)}
                         >
-                            All Competitors
-                        </button>
-                        {loading ? (
-                            <Loader2 className="h-4 w-4 animate-spin mx-auto text-slate-600 mt-4" />
-                        ) : (
-                            filteredCompetitors.map(comp => {
-                                return (
-                                    <button
-                                        key={comp.id}
-                                        onClick={() => setSelectedCompetitor(comp.id === selectedCompetitor ? null : comp.id)}
-                                        className={`w-full text-left px-2 py-2 rounded-md text-sm flex items-center justify-between group transition-all duration-200 ${selectedCompetitor === comp.id ? 'bg-cyan-950/30 text-cyan-400 font-medium border border-cyan-900/50' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
-                                    >
-                                        <div className="flex items-center gap-2 overflow-hidden flex-1">
-                                            <CompetitorLogo
-                                                name={comp.name}
-                                                website={comp.website}
-                                                className="w-5 h-5 rounded-full flex-shrink-0 text-[10px] bg-slate-900 border-slate-800"
-                                            />
-                                            <Link
-                                                href={`/competitor/${comp.id}`}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="truncate hover:underline hover:text-cyan-400 transition-colors"
-                                                title="View Dossier"
-                                            >
-                                                {comp.name}
-                                            </Link>
-                                        </div>
-                                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${selectedCompetitor === comp.id ? 'bg-cyan-900/50 text-cyan-300' : 'bg-slate-900 text-slate-600 group-hover:bg-slate-800 group-hover:text-slate-400'}`}>
-                                            {comp.newsCount}
-                                        </span>
-                                    </button>
-                                )
-                            })
-                        )}
+                            <option value="">All Regions</option>
+                            {Object.keys(APP_CONFIG.regions).map(r => (
+                                <option key={r} value={r}>{r}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Competitors List */}
+                    <div className="space-y-3">
+                        <Link href="/" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-cyan-400 hover:bg-slate-900/50 rounded-lg transition-colors group">
+                            <LayoutDashboard className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+                            Dashboard
+                        </Link>
+                        <Link href="/debrief" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-cyan-400 hover:bg-slate-900/50 rounded-lg transition-colors group">
+                            <FileText className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+                            Weekly Debrief
+                        </Link>
+                        <Link href="/competitors" className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:text-cyan-400 hover:bg-slate-900/50 rounded-lg transition-colors group">
+                            <Settings className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+                            Manage Competitors
+                        </Link>    {/* Search Input */}
+                        <input
+                            type="text"
+                            placeholder="Filter competitors..."
+                            className="w-full text-sm px-3 py-2 rounded-md bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 placeholder:text-slate-600"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+
+                        <div className="space-y-1">
+                            <button
+                                onClick={() => setSelectedCompetitor(null)}
+                                className={`w-full text-left px-2 py-1.5 rounded-md text-sm transition-all duration-200 ${!selectedCompetitor ? 'bg-cyan-950/30 text-cyan-400 font-medium border border-cyan-900/50' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
+                            >
+                                All Competitors
+                            </button>
+                            {loading ? (
+                                <Loader2 className="h-4 w-4 animate-spin mx-auto text-slate-600 mt-4" />
+                            ) : (
+                                filteredCompetitors.map(comp => {
+                                    return (
+                                        <button
+                                            key={comp.id}
+                                            onClick={() => setSelectedCompetitor(comp.id === selectedCompetitor ? null : comp.id)}
+                                            className={`w-full text-left px-2 py-2 rounded-md text-sm flex items-center justify-between group transition-all duration-200 ${selectedCompetitor === comp.id ? 'bg-cyan-950/30 text-cyan-400 font-medium border border-cyan-900/50' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}
+                                        >
+                                            <div className="flex items-center gap-2 overflow-hidden flex-1">
+                                                <CompetitorLogo
+                                                    name={comp.name}
+                                                    website={comp.website}
+                                                    className="w-5 h-5 rounded-full flex-shrink-0 text-[10px] bg-slate-900 border-slate-800"
+                                                />
+                                                <Link
+                                                    href={`/competitor/${comp.id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="truncate hover:underline hover:text-cyan-400 transition-colors"
+                                                    title="View Dossier"
+                                                >
+                                                    {comp.name}
+                                                </Link>
+                                            </div>
+                                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${selectedCompetitor === comp.id ? 'bg-cyan-900/50 text-cyan-300' : 'bg-slate-900 text-slate-600 group-hover:bg-slate-800 group-hover:text-slate-400'}`}>
+                                                {comp.newsCount}
+                                            </span>
+                                        </button>
+                                    )
+                                })
+                            )}
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div className="mt-auto pt-6 border-t border-slate-800">
-                {/* Assuming RefreshButton expects simple onClick or handles itself */}
-                <RefreshButton />
+                <div className="mt-auto pt-6 border-t border-slate-800">
+                    <RefreshButton />
+                </div>
             </div>
-        </div>
+        </>
     )
 }

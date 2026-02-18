@@ -1,5 +1,6 @@
 import { TrendingUp, ShieldAlert, Clock, Radio } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import type { NewsWithCompetitor } from '@/lib/types'
 
 interface RightSidebarProps {
     stats: {
@@ -9,7 +10,7 @@ interface RightSidebarProps {
         last24h: number
     }
     topMovers?: { name: string, count: number }[]
-    latestIntercepts?: any[]
+    latestIntercepts?: NewsWithCompetitor[]
 }
 
 export function RightSidebar({ stats, topMovers = [], latestIntercepts = [] }: RightSidebarProps) {

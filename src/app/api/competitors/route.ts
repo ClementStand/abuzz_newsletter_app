@@ -1,10 +1,30 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
+import { createClient } from '@/utils/supabase/server'
 
 export async function GET() {
     try {
+        const supabase = createClient()
+        const { data: { user }, error } = await supabase.auth.getUser()
+
+        if (error || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        // Get user's org
+        const userProfile = await prisma.userProfile.findUnique({
+            where: { email: user.email! }
+        })
+
+        if (!userProfile) {
+            return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+        }
+
         const competitors = await prisma.competitor.findMany({
-            where: { status: 'active' },
+            where: {
+                status: 'active',
+                organizationId: userProfile.organizationId
+            },
             include: {
                 _count: {
                     select: { news: true }
@@ -27,6 +47,21 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
+        const supabase = createClient()
+        const { data: { user }, error } = await supabase.auth.getUser()
+
+        if (error || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        const userProfile = await prisma.userProfile.findUnique({
+            where: { email: user.email! }
+        })
+
+        if (!userProfile) {
+            return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+        }
+
         const { name, website, region } = await request.json()
 
         const competitor = await prisma.competitor.create({
@@ -34,7 +69,8 @@ export async function POST(request: Request) {
                 name,
                 website,
                 region,
-                status: 'active'
+                status: 'active',
+                organizationId: userProfile.organizationId
             }
         })
         return NextResponse.json(competitor)

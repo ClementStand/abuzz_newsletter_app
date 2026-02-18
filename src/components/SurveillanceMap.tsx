@@ -86,8 +86,10 @@ const countryCoordinates: { [key: string]: [number, number] } = {
     "south africa": [22.9375, -30.5595],
 }
 
+import type { NewsWithCompetitor } from '@/lib/types'
+
 interface SurveillanceMapProps {
-    news: any[]
+    news: NewsWithCompetitor[]
 }
 
 const SurveillanceMap: React.FC<SurveillanceMapProps> = ({ news }) => {

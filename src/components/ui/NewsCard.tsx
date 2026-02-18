@@ -5,11 +5,23 @@ import { CompetitorLogo } from './CompetitorLogo'
 import { useState } from 'react'
 import { Star, ExternalLink } from 'lucide-react'
 import { cn } from "@/lib/utils"
+import type { NewsWithCompetitor, NewsDetails } from "@/lib/types"
 
-export default function NewsCard({ item }: { item: any }) {
+export default function NewsCard({ item }: { item: NewsWithCompetitor }) {
   const [isRead, setIsRead] = useState(item.isRead)
   const [isStarred, setIsStarred] = useState(item.isStarred)
   const [loading, setLoading] = useState(false)
+
+  // Parse details from JSON string to object
+  const details: NewsDetails | null = (() => {
+    if (!item.details) return null
+    if (typeof item.details === 'object') return item.details as NewsDetails
+    try {
+      return JSON.parse(item.details) as NewsDetails
+    } catch {
+      return null
+    }
+  })()
 
   const handleRead = async () => {
     if (isRead) return
@@ -94,14 +106,14 @@ export default function NewsCard({ item }: { item: any }) {
       </p>
 
       {/* Footer Meta */}
-      {(item.details?.location || item.details?.products) && (
+      {(details?.location || details?.products) && (
         <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-800/50">
-          {item.details.location && (
+          {details.location && (
             <span className="inline-flex items-center text-xs text-slate-500">
-              📍 {item.details.location}
+              📍 {details.location}
             </span>
           )}
-          {item.details.products?.map((prod: string) => (
+          {details.products?.map((prod: string) => (
             <span key={prod} className="inline-flex items-center text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded border border-slate-800">
               {prod}
             </span>

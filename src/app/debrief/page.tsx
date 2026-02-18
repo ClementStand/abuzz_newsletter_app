@@ -92,7 +92,7 @@ export default function WeeklyDebrief() {
                 </Suspense>
             </div>
 
-            <main className="flex-1 ml-64 p-8 md:p-12 print:ml-0 print:p-0">
+            <main className="flex-1 lg:ml-64 p-4 lg:p-8 xl:p-12 print:ml-0 print:p-0">
                 <div className="max-w-3xl mx-auto">
                     {/* Header */}
                     <div className="flex items-end justify-between mb-10 border-b border-slate-800 pb-5">

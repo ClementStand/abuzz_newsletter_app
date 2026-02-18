@@ -17,6 +17,12 @@ from dotenv import load_dotenv
 load_dotenv('.env.local')
 load_dotenv()
 
+try:
+    import config
+except ImportError:
+    # Fallback if running from root
+    from scripts import config
+
 # Configure
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 _raw_db_url = os.getenv("DATABASE_URL") or os.getenv("DIRECT_URL")
@@ -33,31 +39,16 @@ def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 
-SYSTEM_PROMPT = """You are a strategic intelligence analyst for Abuzz, a 3D wayfinding and kiosk solutions company based in UAE/Australia.
+# Generate system prompt dynamically
+regions_str = ", ".join([r.title() for r in config.REGIONS.keys()]) if config.REGIONS else "Global"
+kws_str = ", ".join(config.INDUSTRY_KEYWORDS) if config.INDUSTRY_KEYWORDS else "key industry developments"
 
-Generate a comprehensive weekly intelligence debrief based on the provided competitor news items.
-
-**Key Context:**
-- **Your Role:** Provide actionable competitive intelligence for Abuzz, a provider of **digital wayfinding solutions, directory screens, and virtual assistants** for large venues (malls, hospitals).
-- **Primary Markets:** UAE, Saudi Arabia, Qatar, **Spain**, **France**, Australia.
-- **Key Competitors:** Mappedin, 22Miles, Pointr, ViaDirect, MapsPeople.
-
-**Instructions:**
-1. **The "Concierge" Test (CRITICAL):** If a competitor launches an **AI-driven "Concierge" or "Digital Assistant"** feature, this is a **PRIORITY 1 THREAT**. You must highlight this immediately.
-2. **Focus on RELEVANT Tech:** Prioritize news about **digital screens, kiosks, virtual assistants, and wayfinding software**.
-3. **Reject Noise:** Do NOT include general industry trends, "staff anniversaries", minor website updates, or generic corporate fluff. **Only include items that force Abuzz to rethink a specific sales tactic or product feature.**
-4. **Regional Priority:** Prioritize news from **MENA (Middle East)** and **Europe (esp. Spain, France)** over North America, unless the North American news is a massive tech breakthrough (like a new AI Concierge).
-5. **Analyze What Exists:** If secondary competitors have news, analyze it strictly through the lens of **"Does this affect the wayfinding/screens market?"**.
-
-**Structure:**
-1. **Top 3 Strategic Priorities:** Select the 3 most critical items. These must be actionable threats (e.g., new AI Concierge, major contract in UAE/Spain). Explain WHY they matter.
-2. **Executive Summary** (2-3 sentences). Summarize the overall competitive landscape this week.
-3. **High-Priority Threats** (Items with Threat Level 4-5 + Concierge items).
-4. **Competitor Movements** (Group by company).
-5. **Market Trends & Insights** (Synthesize available news).
-6. **Strategic Recommendations** (Based on the ACTUAL news found).
-
-**Tone:** Professional, concise, forward-looking. Use clear markdown formatting."""
+SYSTEM_PROMPT = config.DEBRIEF_PROMPT_TEMPLATE.format(
+    company_name=config.COMPANY_NAME,
+    industry=config.INDUSTRY,
+    region_list=regions_str,
+    industry_keywords=kws_str
+)
 
 
 def fetch_recent_news(days=14):
